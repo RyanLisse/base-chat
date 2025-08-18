@@ -15,6 +15,7 @@ import { AnimatePresence, motion } from "motion/react"
 import dynamic from "next/dynamic"
 import { redirect } from "next/navigation"
 import { useCallback, useMemo, useState } from "react"
+import type { ReasoningEffort } from "./reasoning-effort-selector"
 import { useChatCore } from "./use-chat-core"
 import { useChatOperations } from "./use-chat-operations"
 import { useFileUpload } from "./use-file-upload"
@@ -87,6 +88,17 @@ export function Chat() {
     },
     []
   )
+
+  // Reasoning effort and file search state
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("medium")
+  const [enableFileSearch, setEnableFileSearch] = useState(false)
+
+  // Auto-enable file search for GPT-5 models
+  useMemo(() => {
+    if (selectedModel?.id.startsWith("gpt-5")) {
+      setEnableFileSearch(true)
+    }
+  }, [selectedModel])
 
   // Chat operations (utils + handlers) - created first
   const { checkLimitsAndNotify, ensureChatExists, handleDelete, handleEdit } =

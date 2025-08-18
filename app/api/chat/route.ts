@@ -1,9 +1,11 @@
-import { SYSTEM_PROMPT_DEFAULT } from "@/lib/config"
+import { FILE_SEARCH_SYSTEM_PROMPT, SYSTEM_PROMPT_DEFAULT } from "@/lib/config"
 import { getAllModels } from "@/lib/models"
 import { getProviderForModel } from "@/lib/openproviders/provider-map"
 import type { ProviderWithoutOllama } from "@/lib/user-keys"
 import { Attachment } from "@ai-sdk/ui-utils"
 import { Message as MessageAISDK, streamText, ToolSet } from "ai"
+import { fileSearchTool } from "@/lib/tools/file-search"
+import { createLangSmithRun, isLangSmithEnabled } from "@/lib/langsmith/client"
 import {
   incrementMessageCount,
   logUserMessage,
@@ -22,6 +24,7 @@ type ChatRequest = {
   isAuthenticated: boolean
   systemPrompt: string
   enableSearch: boolean
+  reasoningEffort?: string
   message_group_id?: string
 }
 
@@ -35,6 +38,7 @@ export async function POST(req: Request) {
       isAuthenticated,
       systemPrompt,
       enableSearch,
+      reasoningEffort = "medium",
       message_group_id,
     } = (await req.json()) as ChatRequest
 
@@ -78,7 +82,10 @@ export async function POST(req: Request) {
       throw new Error(`Model ${model} not found`)
     }
 
-    const effectiveSystemPrompt = systemPrompt || SYSTEM_PROMPT_DEFAULT
+    // Use RoboRail system prompt when file search is enabled
+    const effectiveSystemPrompt = enableSearch 
+      ? FILE_SEARCH_SYSTEM_PROMPT 
+      : (systemPrompt || SYSTEM_PROMPT_DEFAULT)
 
     let apiKey: string | undefined
     if (isAuthenticated && userId) {
@@ -89,11 +96,42 @@ export async function POST(req: Request) {
         undefined
     }
 
+    // Create LangSmith run if enabled
+    let langsmithRunId: string | undefined
+    if (isLangSmithEnabled()) {
+      try {
+        const run = await createLangSmithRun({
+          name: "chat-completion",
+          inputs: {
+            model,
+            messages: messages.length,
+            enableSearch,
+            reasoningEffort,
+            systemPrompt: effectiveSystemPrompt.substring(0, 100) + "..."
+          },
+          metadata: {
+            userId,
+            chatId,
+            isAuthenticated
+          }
+        })
+        langsmithRunId = run?.id as string | undefined
+      } catch (error) {
+        console.error("Failed to create LangSmith run:", error)
+      }
+    }
+
+    // Configure tools based on enableSearch
+    const tools = enableSearch ? { fileSearch: fileSearchTool } : {}
+
     const result = streamText({
-      model: modelConfig.apiSdk(apiKey, { enableSearch }),
+      model: modelConfig.apiSdk(apiKey, { 
+        enableSearch, 
+        reasoningEffort 
+      }),
       system: effectiveSystemPrompt,
       messages: messages,
-      tools: {} as ToolSet,
+      tools: tools as ToolSet,
       maxSteps: 10,
       onError: (err: unknown) => {
         console.error("Streaming error occurred:", err)
@@ -110,6 +148,27 @@ export async function POST(req: Request) {
             message_group_id,
             model,
           })
+        }
+
+        // Update LangSmith run if enabled
+        if (langsmithRunId && isLangSmithEnabled()) {
+          try {
+            await createLangSmithRun({
+              name: "chat-completion-finish",
+              inputs: {
+                runId: langsmithRunId,
+                tokensUsed: response.usage?.totalTokens || 0,
+                finishReason: response.finishReason
+              },
+              outputs: {
+                messageCount: response.messages?.length || 0,
+                hasToolCalls: response.toolCalls?.length > 0
+              },
+              parentRunId: langsmithRunId
+            })
+          } catch (error) {
+            console.error("Failed to update LangSmith run:", error)
+          }
         }
       },
     })

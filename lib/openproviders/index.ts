@@ -12,12 +12,13 @@ import type {
   MistralModel,
   OllamaModel,
   OpenAIModel,
+  OpenAISettings,
   PerplexityModel,
   SupportedModel,
   XaiModel,
 } from "./types"
 
-type OpenAIChatSettings = Parameters<typeof openai>[1]
+type OpenAIChatSettings = Parameters<typeof openai>[1] & OpenAISettings
 type MistralProviderSettings = Parameters<typeof mistral>[1]
 type GoogleGenerativeAIProviderSettings = Parameters<typeof google>[1]
 type PerplexityProviderSettings = Parameters<typeof perplexity>[0]
@@ -74,17 +75,36 @@ export function openproviders<T extends SupportedModel>(
   const provider = getProviderForModel(modelId)
 
   if (provider === "openai") {
+    const openaiSettings = settings as OpenAIChatSettings
+    const modelSettings = {
+      ...openaiSettings,
+      // Add reasoning effort to model configuration
+      ...(openaiSettings?.reasoningEffort && {
+        reasoning: openaiSettings.reasoningEffort
+      }),
+      // Enable file search if requested
+      ...(openaiSettings?.enableSearch && {
+        tools: [{ type: "file_search" }]
+      })
+    }
+
     if (apiKey) {
       const openaiProvider = createOpenAI({
         apiKey,
         compatibility: "strict",
+        // Add file search configuration
+        ...(openaiSettings?.enableSearch && {
+          headers: {
+            "OpenAI-Beta": "assistants=v2"
+          }
+        })
       })
       return openaiProvider(
         modelId as OpenAIModel,
-        settings as OpenAIChatSettings
+        modelSettings
       )
     }
-    return openai(modelId as OpenAIModel, settings as OpenAIChatSettings)
+    return openai(modelId as OpenAIModel, modelSettings)
   }
 
   if (provider === "mistral") {

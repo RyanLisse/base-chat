@@ -8,6 +8,7 @@ import { useUserPreferences } from "@/lib/user-preference-store/provider"
 import { cn } from "@/lib/utils"
 import type { Message as MessageAISDK } from "@ai-sdk/react"
 import { ArrowClockwise, Check, Copy } from "@phosphor-icons/react"
+import { MessageFeedback } from "./message-feedback"
 import { useCallback, useRef } from "react"
 import { getSources } from "./get-sources"
 import { QuoteButton } from "./quote-button"
@@ -29,6 +30,7 @@ type MessageAssistantProps = {
   className?: string
   messageId: string
   onQuote?: (text: string, messageId: string) => void
+  langsmithRunId?: string
 }
 
 export function MessageAssistant({
@@ -43,6 +45,7 @@ export function MessageAssistant({
   className,
   messageId,
   onQuote,
+  langsmithRunId,
 }: MessageAssistantProps) {
   const { preferences } = useUserPreferences()
   const sources = getSources(parts)
@@ -131,11 +134,17 @@ export function MessageAssistant({
         {sources && sources.length > 0 && <SourcesList sources={sources} />}
 
         {Boolean(isLastStreaming || contentNullOrEmpty) ? null : (
-          <MessageActions
-            className={cn(
-              "-ml-2 flex gap-0 opacity-0 transition-opacity group-hover:opacity-100"
-            )}
-          >
+          <div className="flex items-center justify-between">
+            <MessageFeedback 
+              messageId={messageId}
+              langsmithRunId={langsmithRunId}
+              className="opacity-0 transition-opacity group-hover:opacity-100"
+            />
+            <MessageActions
+              className={cn(
+                "-mr-2 flex gap-0 opacity-0 transition-opacity group-hover:opacity-100"
+              )}
+            >
             <MessageAction
               tooltip={copied ? "Copied!" : "Copy text"}
               side="bottom"
@@ -169,7 +178,8 @@ export function MessageAssistant({
                 </button>
               </MessageAction>
             ) : null}
-          </MessageActions>
+            </MessageActions>
+          </div>
         )}
 
         {isQuoteEnabled && selectionInfo && selectionInfo.messageId && (
