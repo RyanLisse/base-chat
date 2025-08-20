@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { userStoreSelectors, useUserStore } from '../..//lib/stores/user-store'
+import { userStoreSelectors, useUserStore } from '@/lib/stores/user-store'
 
 // Helper to reset after each test
 afterEach(() => {

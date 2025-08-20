@@ -4,7 +4,7 @@ import {
   convertToApiFormat,
   defaultPreferences,
   type UserPreferences,
-} from '../..//lib/user-preference-store/utils'
+} from '@/lib/user-preference-store/utils'
 
 describe('user-preference-store/utils', () => {
   it('convertFromApiFormat maps snake_case to camelCase with defaults', () => {

@@ -8,11 +8,11 @@ vi.mock('idb-keyval', () => ({
   del: async (k: string) => void memoryStore.delete(k),
 }))
 
-type ChatStoreModule = typeof import('../..//lib/stores/chat-store')
+type ChatStoreModule = typeof import('@/lib/stores/chat-store')
 let chatStoreModule: ChatStoreModule
 
 beforeAll(async () => {
-  chatStoreModule = await import('../../lib/stores/chat-store')
+  chatStoreModule = await import('@/lib/stores/chat-store')
 })
 
 const makeChat = (id: string, created?: string, updated?: string) => ({
