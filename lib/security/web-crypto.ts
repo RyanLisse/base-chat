@@ -194,7 +194,9 @@ export async function hashData(data: string): Promise<string> {
   const encoder = new TextEncoder()
   const hashBuffer = await window.crypto.subtle.digest('SHA-256', encoder.encode(data))
   const hashArray = new Uint8Array(hashBuffer)
-  return btoa(String.fromCharCode(...hashArray))
+  return btoa(Array.from(hashArray)
+    .map(byte => String.fromCharCode(byte))
+    .join(''))
 }
 
 // Validate API key format
@@ -232,7 +234,9 @@ export function secureCompare(a: string, b: string): boolean {
 export function generateApiKey(prefix: string = "sk"): string {
   // Use base64url encoding for URL-safe keys
   const bytes = randomBytes(32)
-  const randomPart = btoa(String.fromCharCode(...bytes))
+  const randomPart = btoa(Array.from(bytes)
+    .map(byte => String.fromCharCode(byte))
+    .join(''))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=/g, '')
@@ -240,9 +244,10 @@ export function generateApiKey(prefix: string = "sk"): string {
 }
 
 // Export types
-export interface EncryptedApiKey {
+export interface WebEncryptedApiKey {
   encrypted: string
   iv: string
+  authTag?: string  // Optional for web-crypto compatibility
   masked: string
 }
 

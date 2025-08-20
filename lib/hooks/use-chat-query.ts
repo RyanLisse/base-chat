@@ -152,8 +152,10 @@ export function useChatsQuery(userId?: string) {
         queryClient.setQueryData(CHATS_QUERY_KEY, context.previousChats)
       }
     },
-    onSuccess: (data, chatId) => {
-      queryClient.removeQueries({ queryKey: MESSAGES_QUERY_KEY(chatId) })
+    onSettled: (data, error, chatId) => {
+      if (!error) {
+        queryClient.removeQueries({ queryKey: MESSAGES_QUERY_KEY(chatId) })
+      }
     },
   })
   

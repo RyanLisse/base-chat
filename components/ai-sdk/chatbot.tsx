@@ -16,7 +16,7 @@ interface Message {
   experimental_attachments?: Array<{
     name: string
     contentType: string
-    url: string
+    url?: string
   }>
 }
 
@@ -90,7 +90,6 @@ export const AISdkChatbot = memo(function AISdkChatbot({
     reload,
     stop,
     setMessages,
-    append,
   } = useChat({
     api: apiEndpoint,
     initialMessages,
@@ -113,8 +112,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
         status: 'error',
       })
     },
-    // Enable experimental features
-    experimental_onFunctionCall: undefined, // Can be extended for function calling
+    // experimental_onFunctionCall can be added here when function calling is implemented
   })
 
   // Auto-scroll to bottom when messages change
@@ -137,7 +135,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
       const attachments = files.map(file => ({
         name: file.name,
         contentType: file.type,
-        url: URL.createObjectURL(file), // In production, upload to storage first
+        // In production, first upload to storage and include the resulting URL here.
       }))
 
       handleSubmit(e, {
@@ -153,6 +151,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
   // Keyboard shortcuts
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.isComposing) return
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         handleSubmitWithFiles()
@@ -228,7 +227,13 @@ export const AISdkChatbot = memo(function AISdkChatbot({
   )
 
   const regenerateLastMessage = useCallback(() => {
-    const lastUserMessageIndex = messages.findLastIndex(m => m.role === 'user')
+    let lastUserMessageIndex = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserMessageIndex = i
+        break
+      }
+    }
     if (lastUserMessageIndex === -1) return
 
     // Remove assistant messages after the last user message
@@ -286,6 +291,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
                       variant="ghost"
                       className="h-6 w-6 p-0"
                       onClick={regenerateLastMessage}
+                      aria-label="Regenerate response"
                     >
                       <RotateCcw className="h-3 w-3" />
                     </Button>
@@ -295,6 +301,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
                     variant="ghost"
                     className="h-6 w-6 p-0"
                     onClick={() => deleteMessage(message.id)}
+                    aria-label="Delete message"
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -345,6 +352,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
                     onClick={() => removeFile(index)}
                     className="ml-1 hover:text-destructive"
                     type="button"
+                    aria-label={`Remove ${file.name}`}
                   >
                     ×
                   </button>
@@ -363,6 +371,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
               placeholder={placeholder}
               className="flex-1 min-h-[60px] max-h-[200px] resize-none"
               disabled={isLoading}
+              aria-label="Chat message input"
             />
 
             <div className="flex gap-1">
@@ -375,6 +384,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
                     as="span"
                     className="cursor-pointer"
                     disabled={isLoading}
+                    aria-label="Attach files"
                   >
                     <Paperclip className="h-4 w-4" />
                   </Button>
@@ -395,6 +405,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
                   size="icon"
                   variant="destructive"
                   onClick={stop}
+                  aria-label="Stop generation"
                 >
                   <StopCircle className="h-4 w-4" />
                 </Button>
@@ -403,6 +414,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
                   type="submit"
                   size="icon"
                   disabled={!input.trim() && files.length === 0}
+                  aria-label="Send message"
                 >
                   <Send className="h-4 w-4" />
                 </Button>

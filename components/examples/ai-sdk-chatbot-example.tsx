@@ -35,6 +35,8 @@ export function AISdkChatbotExample() {
     temperature: 0.7,
   })
 
+  const [chatKey, setChatKey] = useState(0)
+
   const handleMessageFinish = (message: any) => {
     console.log('Message finished:', message)
     // Here you could save to database, analytics, etc.
@@ -52,6 +54,7 @@ export function AISdkChatbotExample() {
       content: 'Chat cleared! How can I help you?',
       createdAt: new Date(),
     }])
+    setChatKey((k) => k + 1)
   }
 
   return (
@@ -74,8 +77,9 @@ export function AISdkChatbotExample() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="text-sm font-medium">System Prompt</label>
+              <label htmlFor="system-prompt" className="text-sm font-medium">System Prompt</label>
               <textarea
+                id="system-prompt"
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 className="w-full mt-1 p-2 border rounded text-sm"
@@ -84,14 +88,18 @@ export function AISdkChatbotExample() {
             </div>
 
             <div>
-              <label className="text-sm font-medium">Max Tokens</label>
+              <label htmlFor="max-tokens" className="text-sm font-medium">Max Tokens</label>
               <input
+                id="max-tokens"
                 type="number"
                 value={apiConfig.maxTokens}
-                onChange={(e) => setApiConfig(prev => ({
-                  ...prev,
-                  maxTokens: parseInt(e.target.value) || 1000
-                }))}
+                onChange={(e) => {
+                  const next = parseInt(e.target.value, 10)
+                  setApiConfig(prev => ({
+                    ...prev,
+                    maxTokens: Number.isNaN(next) ? 1000 : next
+                  }))
+                }}
                 className="w-full mt-1 p-2 border rounded text-sm"
                 min="100"
                 max="4000"
@@ -99,14 +107,18 @@ export function AISdkChatbotExample() {
             </div>
 
             <div>
-              <label className="text-sm font-medium">Temperature</label>
+              <label htmlFor="temperature" className="text-sm font-medium">Temperature</label>
               <input
+                id="temperature"
                 type="number"
                 value={apiConfig.temperature}
-                onChange={(e) => setApiConfig(prev => ({
-                  ...prev,
-                  temperature: parseFloat(e.target.value) || 0.7
-                }))}
+                onChange={(e) => {
+                  const next = parseFloat(e.target.value)
+                  setApiConfig(prev => ({
+                    ...prev,
+                    temperature: Number.isNaN(next) ? 0.7 : next
+                  }))
+                }}
                 className="w-full mt-1 p-2 border rounded text-sm"
                 min="0"
                 max="2"
@@ -135,6 +147,7 @@ export function AISdkChatbotExample() {
         {/* Chatbot */}
         <Card className="lg:col-span-3 h-[600px]">
           <AISdkChatbot
+            key={chatKey}
             apiEndpoint="/api/chat"
             initialMessages={messages}
             systemPrompt={systemPrompt}
