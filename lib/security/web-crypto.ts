@@ -51,29 +51,29 @@ async function getPersistentKey(): Promise<CryptoKey> {
     throw new Error('Web Crypto API not available in server environment')
   }
 
-  // Try to get existing key from IndexedDB
+  // Use default master password at runtime - never store it
+  const masterPassword = 'BaseChat-Default-Master-2025' // In production, this should be user-provided
+
+  // Try to get existing salt from localStorage
   const storedKeyData = localStorage.getItem('base-chat-encryption-key')
   
   if (storedKeyData) {
     try {
       const keyData = JSON.parse(storedKeyData)
       const salt = new Uint8Array(keyData.salt)
-      const masterPassword = keyData.masterPassword || 'BaseChat-Default-Master-2025'
       return await deriveKey(masterPassword, salt)
     } catch (error) {
       console.warn('Failed to restore encryption key, generating new one:', error)
     }
   }
 
-  // Generate new key if none exists
+  // Generate new salt if none exists
   const salt = randomBytes(32)
-  const masterPassword = 'BaseChat-Default-Master-2025' // In production, this should be user-specific
   const key = await deriveKey(masterPassword, salt)
 
-  // Store salt and master password reference
+  // Store only the salt (non-sensitive data)
   localStorage.setItem('base-chat-encryption-key', JSON.stringify({
-    salt: Array.from(salt),
-    masterPassword
+    salt: Array.from(salt)
   }))
 
   return key
