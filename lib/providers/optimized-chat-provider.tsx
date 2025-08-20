@@ -40,7 +40,7 @@ export function OptimizedChatProvider({
   const bumpChat = useChatStore((state) => state.bumpChat)
   const storeChats = useChatStore(chatStoreSelectors.chats)
   const storeMessages = useChatStore((state) => 
-    currentChatId ? state.messages.get(currentChatId) || [] : []
+    currentChatId ? state.messagesByChatId[currentChatId] || [] : []
   )
   
   const {
@@ -73,20 +73,38 @@ export function OptimizedChatProvider({
     }
   }
   
-  const contextValue: ChatContextType = {
+  const contextValue: ChatContextType = useMemo(() => ({
     chats,
     messages,
     currentChatId,
     isLoadingChats,
     isLoadingMessages,
-    error: chatsError || messagesError,
+    error: (chatsError ?? messagesError) instanceof Error
+      ? (chatsError ?? messagesError)
+      : (chatsError ?? messagesError)
+        ? new Error(String(chatsError ?? messagesError))
+        : null,
     createChat,
     updateTitle: (chatId, title) => updateTitle({ chatId, title }),
     deleteChat: handleDeleteChat,
     setCurrentChatId,
     getChatById,
     bumpChat,
-  }
+  }), [
+    chats,
+    messages,
+    currentChatId,
+    isLoadingChats,
+    isLoadingMessages,
+    chatsError,
+    messagesError,
+    createChat,
+    updateTitle,
+    handleDeleteChat,
+    setCurrentChatId,
+    getChatById,
+    bumpChat,
+  ])
   
   return (
     <ChatContext.Provider value={contextValue}>
@@ -95,10 +113,10 @@ export function OptimizedChatProvider({
   )
 }
 
-export function useOptimizedChat() {
+export function useChatContext() {
   const context = useContext(ChatContext)
   if (!context) {
-    throw new Error('useOptimizedChat must be used within OptimizedChatProvider')
+    throw new Error('useChatContext must be used within OptimizedChatProvider')
   }
   return context
 }

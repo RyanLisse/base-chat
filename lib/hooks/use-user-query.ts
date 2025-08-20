@@ -34,10 +34,7 @@ export function useUserQuery() {
     queryKey: USER_QUERY_KEY,
     queryFn: fetchUserProfile,
     staleTime: 1000 * 60 * 10, // 10 minutes
-    retry: (failureCount, error) => {
-      if (error instanceof Error && error.message.includes('401')) return false
-      return failureCount < 2
-    },
+    retry: (failureCount) => failureCount < 2,
   })
   
   useEffect(() => {
@@ -73,9 +70,11 @@ export function useUserQuery() {
         setUser(context.previousUser)
       }
     },
-    onSuccess: (data) => {
-      queryClient.setQueryData(USER_QUERY_KEY, data)
-      setUser(data)
+    onSettled: (data) => {
+      if (data) {
+        queryClient.setQueryData(USER_QUERY_KEY, data)
+        setUser(data)
+      }
     },
   })
   
@@ -85,6 +84,7 @@ export function useUserQuery() {
     error: query.error,
     refetch: query.refetch,
     updateUser: updateMutation.mutate,
+    updateUserAsync: updateMutation.mutateAsync,
     isUpdating: updateMutation.isPending,
   }
 }

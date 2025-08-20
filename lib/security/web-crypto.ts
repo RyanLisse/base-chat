@@ -51,8 +51,8 @@ async function getPersistentKey(): Promise<CryptoKey> {
     throw new Error('Web Crypto API not available in server environment')
   }
 
-  // Use default master password at runtime - never store it
-  const masterPassword = 'BaseChat-Default-Master-2025' // In production, this should be user-provided
+  // Use runtime-derived master password - never store it
+  const masterPassword = 'BaseChat-Default-Master-2025' // TODO: Replace with user-provided password in production
 
   // Try to get existing salt from localStorage
   const storedKeyData = localStorage.getItem('base-chat-encryption-key')
@@ -102,8 +102,12 @@ export async function encryptData(plaintext: string): Promise<{
   )
 
   return {
-    encrypted: btoa(String.fromCharCode(...new Uint8Array(encryptedData))),
-    iv: btoa(String.fromCharCode(...iv))
+    encrypted: btoa(Array.from(new Uint8Array(encryptedData))
+      .map(byte => String.fromCharCode(byte))
+      .join('')),
+    iv: btoa(Array.from(iv)
+      .map(byte => String.fromCharCode(byte))
+      .join(''))
   }
 }
 
@@ -114,12 +118,18 @@ export async function decryptData(encryptedData: string, ivString: string): Prom
   }
 
   const key = await getPersistentKey()
-  const iv = new Uint8Array(
-    atob(ivString).split('').map(char => char.charCodeAt(0))
-  )
-  const encrypted = new Uint8Array(
-    atob(encryptedData).split('').map(char => char.charCodeAt(0))
-  )
+  // More efficient conversion
+  const ivBinary = atob(ivString)
+  const iv = new Uint8Array(ivBinary.length)
+  for (let i = 0; i < ivBinary.length; i++) {
+    iv[i] = ivBinary.charCodeAt(i)
+  }
+  
+  const encryptedBinary = atob(encryptedData)
+  const encrypted = new Uint8Array(encryptedBinary.length)
+  for (let i = 0; i < encryptedBinary.length; i++) {
+    encrypted[i] = encryptedBinary.charCodeAt(i)
+  }
 
   const decryptedData = await window.crypto.subtle.decrypt(
     {
@@ -135,7 +145,7 @@ export async function decryptData(encryptedData: string, ivString: string): Prom
 }
 
 // Encrypt API key with AES-GCM using Web Crypto API
-export async function encryptApiKey(plaintext: string, userId?: string): Promise<{
+export async function encryptApiKey(plaintext: string): Promise<{
   encrypted: string
   iv: string
   masked: string
@@ -156,8 +166,7 @@ export async function encryptApiKey(plaintext: string, userId?: string): Promise
 // Decrypt API key using Web Crypto API
 export async function decryptApiKey(
   encryptedData: string, 
-  ivString: string,
-  userId?: string
+  ivString: string
 ): Promise<string> {
   return await decryptData(encryptedData, ivString)
 }
@@ -221,8 +230,13 @@ export function secureCompare(a: string, b: string): boolean {
 
 // Generate a secure random API key
 export function generateApiKey(prefix: string = "sk"): string {
-  const randomPart = btoa(String.fromCharCode(...randomBytes(32))).replace(/[+/=]/g, '')
-  return `${prefix}-${randomPart.slice(0, 43)}`
+  // Use base64url encoding for URL-safe keys
+  const bytes = randomBytes(32)
+  const randomPart = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '')
+  return `${prefix}-${randomPart}`
 }
 
 // Export types

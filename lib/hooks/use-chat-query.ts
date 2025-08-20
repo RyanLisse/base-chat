@@ -8,6 +8,9 @@ const CHATS_QUERY_KEY = ['chats'] as const
 const MESSAGES_QUERY_KEY = (chatId: string) => ['messages', chatId] as const
 
 async function fetchChats(userId: string): Promise<Chats[]> {
+  if (!userId) {
+    throw new Error('User ID is required to fetch chats')
+  }
   const response = await fetch(`/api/chats?userId=${userId}`)
   if (!response.ok) throw new Error('Failed to fetch chats')
   return response.json()
@@ -81,7 +84,7 @@ export function useChatsQuery(userId?: string) {
       const previousChats = queryClient.getQueryData<Chats[]>(CHATS_QUERY_KEY)
       
       const optimisticChat: Chats = {
-        id: `temp-${Date.now()}`,
+        id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         title: newChat.title || 'New Chat',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -96,14 +99,14 @@ export function useChatsQuery(userId?: string) {
         queryClient.setQueryData(CHATS_QUERY_KEY, [optimisticChat, ...previousChats])
       }
       
-      return { previousChats }
+      return { previousChats, optimisticId: optimisticChat.id }
     },
     onError: (err, newChat, context) => {
       if (context?.previousChats) {
         queryClient.setQueryData(CHATS_QUERY_KEY, context.previousChats)
       }
     },
-    onSuccess: (data) => {
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: CHATS_QUERY_KEY })
     },
   })
@@ -172,8 +175,8 @@ export function useMessagesQuery(chatId: string | null) {
   const { setMessages, setLoading, setError } = useChatStore()
   
   const query = useQuery({
-    queryKey: MESSAGES_QUERY_KEY(chatId!),
-    queryFn: () => fetchMessages(chatId!),
+    queryKey: chatId ? MESSAGES_QUERY_KEY(chatId) : ['messages', 'null'],
+    queryFn: () => chatId ? fetchMessages(chatId) : Promise.resolve([]),
     enabled: !!chatId,
     staleTime: 1000 * 60, // 1 minute
   })

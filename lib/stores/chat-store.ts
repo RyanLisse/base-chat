@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { devtools, persist, subscribeWithSelector } from 'zustand/middleware'
+import { devtools, persist, subscribeWithSelector, createJSONStorage } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import type { Message } from '@ai-sdk/react'
 import type { Chats } from '@/lib/types/index'
@@ -7,7 +7,7 @@ import { get, set as idbSet, del } from 'idb-keyval'
 
 interface ChatState {
   chats: Chats[]
-  messages: Map<string, Message[]>
+  messagesByChatId: Record<string, Message[]>
   currentChatId: string | null
   isLoading: boolean
   error: string | null
@@ -33,7 +33,7 @@ type ChatStore = ChatState & ChatActions
 
 const initialState: ChatState = {
   chats: [],
-  messages: new Map(),
+  messagesByChatId: {},
   currentChatId: null,
   isLoading: false,
   error: null,
@@ -48,13 +48,16 @@ export const useChatStore = create<ChatStore>()(
           
           setChats: (chats) =>
             set((state) => {
-              state.chats = chats
+              const ts = (c: Chats) => Date.parse(c.updated_at ?? c.created_at ?? 0) || 0
+              state.chats = [...chats].sort((a, b) => ts(b) - ts(a))
               state.error = null
             }),
           
           addChat: (chat) =>
             set((state) => {
-              state.chats.unshift(chat)
+              if (!state.chats.some((c) => c.id === chat.id)) {
+                state.chats.unshift(chat)
+              }
             }),
           
           updateChat: (id, updates) =>
@@ -68,7 +71,7 @@ export const useChatStore = create<ChatStore>()(
           deleteChat: (id) =>
             set((state) => {
               state.chats = state.chats.filter((c) => c.id !== id)
-              state.messages.delete(id)
+              delete state.messagesByChatId[id]
               if (state.currentChatId === id) {
                 state.currentChatId = null
               }
@@ -76,18 +79,18 @@ export const useChatStore = create<ChatStore>()(
           
           setMessages: (chatId, messages) =>
             set((state) => {
-              state.messages.set(chatId, messages)
+              state.messagesByChatId[chatId] = messages
             }),
           
           addMessage: (chatId, message) =>
             set((state) => {
-              const messages = state.messages.get(chatId) || []
-              state.messages.set(chatId, [...messages, message])
+              const messages = state.messagesByChatId[chatId] || []
+              state.messagesByChatId[chatId] = [...messages, message]
             }),
           
           updateMessage: (chatId, messageId, updates) =>
             set((state) => {
-              const messages = state.messages.get(chatId)
+              const messages = state.messagesByChatId[chatId]
               if (messages) {
                 const messageIndex = messages.findIndex((m) => m.id === messageId)
                 if (messageIndex !== -1) {
@@ -98,12 +101,9 @@ export const useChatStore = create<ChatStore>()(
           
           deleteMessage: (chatId, messageId) =>
             set((state) => {
-              const messages = state.messages.get(chatId)
+              const messages = state.messagesByChatId[chatId]
               if (messages) {
-                state.messages.set(
-                  chatId,
-                  messages.filter((m) => m.id !== messageId)
-                )
+                state.messagesByChatId[chatId] = messages.filter((m) => m.id !== messageId)
               }
             }),
           
@@ -130,43 +130,21 @@ export const useChatStore = create<ChatStore>()(
               const chatIndex = state.chats.findIndex((c) => c.id === id)
               if (chatIndex !== -1) {
                 state.chats[chatIndex].updated_at = new Date().toISOString()
-                state.chats.sort(
-                  (a, b) => 
-                    new Date(b.updated_at || '').getTime() - 
-                    new Date(a.updated_at || '').getTime()
-                )
+                const ts = (c: Chats) => Date.parse(c.updated_at ?? c.created_at ?? 0) || 0
+                state.chats.sort((a, b) => ts(b) - ts(a))
               }
             }),
         })),
         {
           name: 'chat-store',
-          storage: {
-            getItem: async (name) => {
-              const value = await get(name)
-              if (value) {
-                const parsed = JSON.parse(value)
-                parsed.state.messages = new Map(parsed.state.messages)
-                return parsed
-              }
-              return null
-            },
-            setItem: async (name, value) => {
-              const serializable = {
-                ...value,
-                state: {
-                  ...value.state,
-                  messages: Array.from(value.state.messages.entries()),
-                },
-              }
-              await idbSet(name, JSON.stringify(serializable))
-            },
-            removeItem: async (name) => {
-              await del(name)
-            },
-          },
+          storage: createJSONStorage(() => ({
+            getItem: (name) => get(name),
+            setItem: (name, value) => idbSet(name, value),
+            removeItem: (name) => del(name),
+          })),
           partialize: (state) => ({
             chats: state.chats,
-            messages: state.messages,
+            messagesByChatId: state.messagesByChatId,
             currentChatId: state.currentChatId,
           }),
         }
@@ -180,10 +158,10 @@ export const useChatStore = create<ChatStore>()(
 
 export const chatStoreSelectors = {
   chats: (state: ChatStore) => state.chats,
-  messages: (state: ChatStore) => state.messages,
+  messagesByChatId: (state: ChatStore) => state.messagesByChatId,
   currentChatId: (state: ChatStore) => state.currentChatId,
-  currentMessages: (state: ChatStore) => 
-    state.currentChatId ? state.messages.get(state.currentChatId) || [] : [],
+  currentMessages: (state: ChatStore) =>
+    state.currentChatId ? state.messagesByChatId[state.currentChatId] || [] : [],
   isLoading: (state: ChatStore) => state.isLoading,
   error: (state: ChatStore) => state.error,
   getChatById: (id: string) => (state: ChatStore) => 

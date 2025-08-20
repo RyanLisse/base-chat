@@ -1,5 +1,5 @@
-// Client-side encryption using Web Crypto API
-// This file is deprecated - use web-crypto.ts instead for client-side encryption
+// Server-side encryption (Node.js) using crypto
+// Client-side: use web-crypto.ts. This module will throw if imported in the browser or non-Node runtimes.
 
 // Conditional import to prevent errors in browser environment
 let crypto: any = null
@@ -14,7 +14,7 @@ if (typeof window === 'undefined') {
 // Enhanced encryption with multiple layers of security
 const ALGORITHM = "aes-256-gcm"
 const SALT_LENGTH = 32
-const IV_LENGTH = 16
+const IV_LENGTH = 12
 const TAG_LENGTH = 16
 const ITERATIONS = 100000
 
@@ -30,7 +30,10 @@ function getEncryptionKey(): any {
   }
 
   // Derive key using PBKDF2 for additional security
-  const salt = process.env.ENCRYPTION_SALT || "BaseChat-Default-Salt-2025"
+  const salt = process.env.ENCRYPTION_SALT
+  if (!salt) {
+    throw new Error("ENCRYPTION_SALT environment variable is required")
+  }
   return crypto.pbkdf2Sync(masterKey, salt, ITERATIONS, 32, "sha256")
 }
 
@@ -55,7 +58,8 @@ export function encryptApiKey(plaintext: string, userId?: string): {
 
   // Add additional authenticated data (AAD) if userId provided
   if (userId) {
-    cipher.setAAD(Buffer.from(userId), { plaintextLength: plaintext.length })
+    // For GCM, plaintextLength isn't needed
+    cipher.setAAD(Buffer.from(userId))
   }
 
   let encrypted = cipher.update(plaintext, "utf8", "hex")
@@ -72,9 +76,9 @@ export function encryptApiKey(plaintext: string, userId?: string): {
 
 // Decrypt API key (Node.js only)
 export function decryptApiKey(
-  encryptedData: string, 
-  ivHex: string, 
-  authTagHex?: string,
+  encryptedData: string,
+  ivHex: string,
+  authTagHex: string,
   userId?: string
 ): string {
   if (!crypto || typeof window !== 'undefined') {
@@ -85,13 +89,12 @@ export function decryptApiKey(
   const iv = Buffer.from(ivHex, "hex")
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv)
 
-  // Set auth tag if provided (for GCM mode)
-  if (authTagHex && crypto) {
-    const authTag = Buffer.from(authTagHex, "hex")
-    decipher.setAuthTag(authTag)
+  if (!authTagHex) {
+    throw new Error('authTagHex is required for AES-GCM decryption')
   }
+  const authTag = Buffer.from(authTagHex, "hex")
+  decipher.setAuthTag(authTag)
 
-  // Add AAD if userId provided
   if (userId) {
     decipher.setAAD(Buffer.from(userId))
   }
@@ -137,7 +140,7 @@ export function verifyHashedApiKey(key: string, hashedKey: string): boolean {
   if (!salt || !hash) return false
 
   const computedHash = crypto.pbkdf2Sync(key, salt, ITERATIONS, 64, "sha512")
-  return computedHash.toString("hex") === hash
+  return secureCompare(computedHash.toString("hex"), hash)
 }
 
 // Generate a secure random API key (Node.js only)
@@ -192,12 +195,19 @@ export function rotateApiKey(
 // Secure comparison to prevent timing attacks
 export function secureCompare(a: string, b: string): boolean {
   if (a.length !== b.length) return false
-  
+  if (crypto && typeof window === 'undefined') {
+    try {
+      const aBuf = Buffer.from(a)
+      const bBuf = Buffer.from(b)
+      return crypto.timingSafeEqual(aBuf, bBuf)
+    } catch {
+      // fall through
+    }
+  }
   let result = 0
   for (let i = 0; i < a.length; i++) {
     result |= a.charCodeAt(i) ^ b.charCodeAt(i)
   }
-  
   return result === 0
 }
 

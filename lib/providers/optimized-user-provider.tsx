@@ -3,14 +3,14 @@
 import { useUserQuery } from '@/lib/hooks/use-user-query'
 import { useUserStore } from '@/lib/stores/user-store'
 import type { UserProfile } from '@/lib/user/types'
-import { createContext, useContext, ReactNode } from 'react'
+import { createContext, useContext, ReactNode, useMemo } from 'react'
 
 interface UserContextType {
   user: UserProfile | null
   isLoading: boolean
   error: Error | null
   updateUser: (updates: Partial<UserProfile>) => void
-  refetch: () => void
+  refetch: () => Promise<unknown>
   isUpdating: boolean
 }
 
@@ -26,14 +26,17 @@ export function OptimizedUserProvider({
   const { user, isLoading, error, refetch, updateUser, isUpdating } = useUserQuery()
   const storeUser = useUserStore((state) => state.user)
   
-  const contextValue: UserContextType = {
-    user: user ?? storeUser ?? initialUser ?? null,
-    isLoading,
-    error: error as Error | null,
-    updateUser,
-    refetch,
-    isUpdating,
-  }
+  const contextValue: UserContextType = useMemo(
+    () => ({
+      user: user ?? storeUser ?? initialUser ?? null,
+      isLoading,
+      error: (error instanceof Error ? error : error ? new Error(String(error)) : null),
+      updateUser,
+      refetch,
+      isUpdating,
+    }),
+    [user, storeUser, initialUser, isLoading, error, updateUser, refetch, isUpdating]
+  )
   
   return (
     <UserContext.Provider value={contextValue}>

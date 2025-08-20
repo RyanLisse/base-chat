@@ -1,7 +1,7 @@
 "use client"
 
 import { useOptimizedUser } from '@/lib/providers/optimized-user-provider'
-import { useOptimizedChat } from '@/lib/providers/optimized-chat-provider'
+import { useChatContext } from '@/lib/providers/optimized-chat-provider'
 import { useUserStore } from '@/lib/stores/user-store'
 import { useChatStore } from '@/lib/stores/chat-store'
 import { apiKeyManager } from '@/lib/api/secure-api-keys'
@@ -10,11 +10,11 @@ import { useState, useCallback, useMemo } from 'react'
 
 export function OptimizedUsageExample() {
   const { user, isLoading, updateUser } = useOptimizedUser()
-  const { chats, createChat, currentChatId } = useOptimizedChat()
+  const { chats, createChat, currentChatId } = useChatContext()
   
   const isAuthenticated = useUserStore((state) => !!state.user?.id)
   const messages = useChatStore((state) => 
-    state.currentChatId ? state.messages.get(state.currentChatId) || [] : []
+    state.currentChatId ? state.messagesByChatId[state.currentChatId] || [] : []
   )
   
   const [apiKeyProvider, setApiKeyProvider] = useState('')
@@ -37,7 +37,10 @@ export function OptimizedUsageExample() {
       'example-data',
       async () => {
         const response = await fetch('/api/example')
-        return response.json()
+        if (!response.ok) {
+          throw new Error(`Failed to fetch /api/example: ${response.status}`)
+        }
+        return await response.json()
       },
       1000 * 60 * 5 // 5 minutes cache
     )

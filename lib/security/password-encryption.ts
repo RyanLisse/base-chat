@@ -1,15 +1,19 @@
 import bcrypt from 'bcryptjs'
-import { createHash, randomBytes } from 'crypto'
+import { createHash, createHmac, randomBytes } from 'crypto'
 import './env-validation' // Auto-validate environment on import
 
 const SALT_ROUNDS = 12
-// Validate pepper is set in production
-if (typeof window === 'undefined' && process.env.NODE_ENV === 'production' && !process.env.PASSWORD_PEPPER) {
-  throw new Error('PASSWORD_PEPPER environment variable must be set in production')
+// Enhanced validation for production and staging
+const isServer = typeof window === 'undefined'
+const isProduction = process.env.NODE_ENV === 'production'
+const isStaging = process.env.NODE_ENV === 'staging'
+
+if (isServer && (isProduction || isStaging) && !process.env.PASSWORD_PEPPER) {
+  throw new Error('PASSWORD_PEPPER environment variable must be set in production/staging')
 }
 
 const PEPPER = process.env.PASSWORD_PEPPER || (
-  process.env.NODE_ENV === 'production' 
+  (isProduction || isStaging)
     ? undefined 
     : 'BaseChat-Default-Pepper-2025-DEV-ONLY'
 )
@@ -98,6 +102,9 @@ export function generateSecureToken(length: number = 32): string {
 }
 
 export function hashSHA256(data: string): string {
+  // WARNING: SHA-256 should NOT be used for password hashing
+  // Use bcrypt or argon2 for passwords
+  console.warn('SHA-256 is not suitable for password hashing')
   return createHash('sha256').update(data).digest('hex')
 }
 
@@ -111,7 +118,9 @@ export async function generatePasswordResetToken(userId: string): Promise<{
   }
   
   const token = generateSecureToken(32)
-  const hashedToken = hashSHA256(`${token}${userId}${PEPPER}`)
+  const hashedToken = createHmac('sha256', PEPPER)
+    .update(`${token}:${userId}`)
+    .digest('hex')
   const expiresAt = new Date(Date.now() + 3600000)
   
   return { token, hashedToken, expiresAt }
@@ -126,7 +135,9 @@ export async function verifyPasswordResetToken(
     throw new Error('PASSWORD_PEPPER environment variable is required')
   }
   
-  const expectedHash = hashSHA256(`${token}${userId}${PEPPER}`)
+  const expectedHash = createHmac('sha256', PEPPER)
+    .update(`${token}:${userId}`)
+    .digest('hex')
   return timingSafeEqual(expectedHash, hashedToken)
 }
 
@@ -151,25 +162,26 @@ export function checkPasswordStrength(password: string): PasswordStrength {
   const feedback: string[] = []
   let score = 0
   
-  if (password.length >= 8) score++
-  if (password.length >= 12) score++
-  if (password.length >= 16) score++
-  
+  // Length scoring (max 2 points)
+  if (password.length >= 12) score += 2
+  else if (password.length >= 8) score += 1
+
+  // Character class scoring (max 3 points for variety)
   if (/[a-z]/.test(password)) score++
   if (/[A-Z]/.test(password)) score++
-  if (/[0-9]/.test(password)) score++
-  if (/[^a-zA-Z0-9]/.test(password)) score++
+  if (/\d/.test(password)) score++
+  if (/[^a-zA-Z0-9]/.test(password)) score++ // Special characters
   
   if (score < 3) feedback.push('Password is too weak')
   if (password.length < 8) feedback.push('Use at least 8 characters')
   if (!/[a-z]/.test(password)) feedback.push('Include lowercase letters')
   if (!/[A-Z]/.test(password)) feedback.push('Include uppercase letters')
-  if (!/[0-9]/.test(password)) feedback.push('Include numbers')
+  if (!/\d/.test(password)) feedback.push('Include numbers')
   if (!/[^a-zA-Z0-9]/.test(password)) feedback.push('Include special characters')
   
   return {
     score: Math.min(score, 5),
     feedback,
-    isStrong: score >= 5,
+    isStrong: score >= 4, // Adjusted threshold for realistic scoring
   }
 }

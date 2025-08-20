@@ -31,10 +31,9 @@ export function useOptimizedChat({
   const [enableSearch, setEnableSearch] = useState(false)
   const [files, setFiles] = useState<File[]>([])
   
-  const abortControllerRef = useRef<AbortController | null>(null)
-  const submitTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const submitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
-  const { addMessage, updateMessage, setCurrentChatId } = useChatStore()
+  const { addMessage } = useChatStore()
   
   const getDraftFromStorage = useCallback(async () => {
     try {
@@ -127,10 +126,8 @@ export function useOptimizedChat({
       setIsSubmitting(true)
       clearDraft()
       
-      abortControllerRef.current = new AbortController()
-      
       try {
-        let attachments: any[] = []
+        let attachments: Array<{ name: string; contentType: string; url: string; size: number }> = []
         
         if (files.length > 0) {
           attachments = await Promise.all(
@@ -155,9 +152,16 @@ export function useOptimizedChat({
         setInput('')
         setFiles([])
         
-        await baseHandleSubmit(e, {
-          experimental_attachments: attachments,
-        })
+        try {
+          await baseHandleSubmit(e, {
+            experimental_attachments: attachments,
+          })
+        } finally {
+          // Revoke object URLs
+          for (const a of attachments) {
+            try { URL.revokeObjectURL(a.url) } catch {}
+          }
+        }
       } catch (error) {
         setIsSubmitting(false)
         console.error('Submit error:', error)
@@ -167,10 +171,6 @@ export function useOptimizedChat({
   )
   
   const handleStop = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-      abortControllerRef.current = null
-    }
     stop()
     setIsSubmitting(false)
   }, [stop])

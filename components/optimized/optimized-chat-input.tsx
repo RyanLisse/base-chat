@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useOptimizedChat } from '@/lib/hooks/use-optimized-chat'
 import { Send, StopCircle, Paperclip, Search } from 'lucide-react'
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useState, useId } from 'react'
 import { cn } from '@/lib/utils'
 
 interface OptimizedChatInputProps {
@@ -38,22 +38,27 @@ export const OptimizedChatInput = memo(function OptimizedChatInput({
   })
   
   const [isDragging, setIsDragging] = useState(false)
+  const fileInputId = useId()
   
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
-        handleSubmit()
-        onSubmit?.()
+        if (canSubmit) {
+          handleSubmit()
+          onSubmit?.()
+        }
       }
     },
-    [handleSubmit, onSubmit]
+    [handleSubmit, onSubmit, canSubmit]
   )
   
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const selectedFiles = Array.from(e.target.files || [])
       setFiles((prev) => [...prev, ...selectedFiles])
+      // Allow selecting the same file again
+      e.target.value = ''
     },
     [setFiles]
   )
@@ -137,11 +142,13 @@ export const OptimizedChatInput = memo(function OptimizedChatInput({
             variant="ghost"
             onClick={() => setEnableSearch(!enableSearch)}
             className={cn(enableSearch && 'bg-primary/10')}
+            aria-pressed={enableSearch}
+            aria-label="Toggle search"
           >
             <Search className="h-4 w-4" />
           </Button>
           
-          <label htmlFor="file-upload">
+          <label htmlFor={fileInputId}>
             <Button
               type="button"
               size="icon"
@@ -152,7 +159,7 @@ export const OptimizedChatInput = memo(function OptimizedChatInput({
               <Paperclip className="h-4 w-4" />
             </Button>
             <input
-              id="file-upload"
+              id={fileInputId}
               type="file"
               multiple
               className="hidden"

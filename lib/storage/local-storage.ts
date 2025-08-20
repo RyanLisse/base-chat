@@ -31,14 +31,13 @@ class StorageManager {
       throw new Error('Web Crypto API not available')
     }
 
-    // Check if we have a stored key
-    const storedKeyData = localStorage.getItem('base-chat-storage-key')
-    
-    if (storedKeyData) {
-      try {
-        const keyData = JSON.parse(storedKeyData)
-        const keyBytes = new Uint8Array(keyData.keyBytes)
-        
+    // Check if we have a stored key in IndexedDB
+    try {
+      const storedKeyBytes = await get('base-chat-storage-key')
+      if (storedKeyBytes) {
+        const keyBytes = storedKeyBytes instanceof Uint8Array
+          ? storedKeyBytes
+          : new Uint8Array(storedKeyBytes)
         return await window.crypto.subtle.importKey(
           'raw',
           keyBytes,
@@ -46,9 +45,9 @@ class StorageManager {
           false,
           ['encrypt', 'decrypt']
         )
-      } catch (error) {
-        console.warn('Failed to restore encryption key, generating new one:', error)
       }
+    } catch (error) {
+      console.warn('Failed to restore encryption key from IDB; generating new one:', error)
     }
 
     // Generate new persistent key
@@ -58,11 +57,9 @@ class StorageManager {
       ['encrypt', 'decrypt']
     )
 
-    // Export and store the key
+    // Export and store the key bytes in IndexedDB
     const exportedKey = await window.crypto.subtle.exportKey('raw', key)
-    localStorage.setItem('base-chat-storage-key', JSON.stringify({
-      keyBytes: Array.from(new Uint8Array(exportedKey))
-    }))
+    await set('base-chat-storage-key', new Uint8Array(exportedKey))
 
     return key
   }
@@ -88,7 +85,13 @@ class StorageManager {
       combined.set(iv, 0)
       combined.set(new Uint8Array(encryptedData), iv.length)
       
-      return btoa(String.fromCharCode.apply(null, Array.from(combined)))
+      // More efficient conversion for large arrays
+      let binary = ''
+      const chunkSize = 0x8000
+      for (let i = 0; i < combined.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, combined.subarray(i, i + chunkSize) as unknown as number[])
+      }
+      return btoa(binary)
     } catch (error) {
       console.error('Encryption failed:', error)
       return data
@@ -99,9 +102,11 @@ class StorageManager {
     if (!this.encrypt || typeof window === 'undefined') return encryptedData
     
     try {
-      const combined = new Uint8Array(
-        atob(encryptedData).split('').map((c) => c.charCodeAt(0))
-      )
+      const binary = atob(encryptedData)
+      const combined = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) {
+        combined[i] = binary.charCodeAt(i)
+      }
       
       const iv = combined.slice(0, 12) // IV is first 12 bytes
       const encrypted = combined.slice(12) // Rest is encrypted data
@@ -204,7 +209,14 @@ class StorageManager {
 
     if (this.fallbackToLocalStorage && typeof window !== 'undefined') {
       try {
-        localStorage.clear()
+        // Only remove keys we likely own (adjust as needed if you add prefixes)
+        const patterns = ['chat-draft-', 'messages-', 'secure-api-keys', 'base-chat-storage-key']
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i)
+          if (k && patterns.some((p) => k.startsWith(p))) {
+            localStorage.removeItem(k)
+          }
+        }
       } catch (error) {
         console.error('Failed to clear localStorage:', error)
       }
@@ -230,7 +242,7 @@ class StorageManager {
 
   async getSize(): Promise<number> {
     try {
-      if ('storage' in navigator && 'estimate' in navigator.storage) {
+      if (typeof navigator !== 'undefined' && 'storage' in navigator && 'estimate' in navigator.storage) {
         const estimate = await navigator.storage.estimate()
         return estimate.usage || 0
       }
@@ -242,7 +254,7 @@ class StorageManager {
   }
 
   async persist(): Promise<boolean> {
-    if ('storage' in navigator && 'persist' in navigator.storage) {
+    if (typeof navigator !== 'undefined' && 'storage' in navigator && 'persist' in navigator.storage) {
       return await navigator.storage.persist()
     }
     return false

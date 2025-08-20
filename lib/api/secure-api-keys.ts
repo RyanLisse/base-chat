@@ -10,9 +10,9 @@ interface StoredApiKey {
   hash: string
   salt: string
   isActive: boolean
-  lastUsed?: Date
-  createdAt: Date
-  updatedAt: Date
+  lastUsed?: string
+  createdAt: string
+  updatedAt: string
 }
 
 const API_KEYS_STORAGE_KEY = 'secure-api-keys'
@@ -36,7 +36,7 @@ export class SecureApiKeyManager {
     
     const existingIndex = keys.findIndex((k) => k.provider === provider)
     
-    const { encrypted, iv, masked } = await encryptApiKey(apiKey, userId)
+    const { encrypted, iv, masked } = await encryptApiKey(apiKey)
     const { hash, salt } = await hashApiKey(apiKey)
     
     const newKey: StoredApiKey = {
@@ -47,8 +47,8 @@ export class SecureApiKeyManager {
       hash,
       salt,
       isActive: true,
-      createdAt: existingIndex >= 0 ? keys[existingIndex].createdAt : new Date(),
-      updatedAt: new Date(),
+      createdAt: existingIndex >= 0 ? keys[existingIndex].createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     }
     
     if (existingIndex >= 0) {
@@ -71,11 +71,10 @@ export class SecureApiKeyManager {
     try {
       const decrypted = await decryptApiKey(
         key.encryptedKey,
-        key.iv,
-        userId
+        key.iv
       )
       
-      key.lastUsed = new Date()
+      key.lastUsed = new Date().toISOString()
       await this.saveKeys(keys)
       
       return decrypted
@@ -108,7 +107,7 @@ export class SecureApiKeyManager {
     
     if (key) {
       key.isActive = isActive
-      key.updatedAt = new Date()
+      key.updatedAt = new Date().toISOString()
       await this.saveKeys(keys)
     }
   }
@@ -117,8 +116,8 @@ export class SecureApiKeyManager {
     provider: string
     maskedKey: string
     isActive: boolean
-    lastUsed?: Date
-    createdAt: Date
+    lastUsed?: string
+    createdAt: string
   }>> {
     const keys = await this.getStoredKeys()
     return keys.map((k) => ({
