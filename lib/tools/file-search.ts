@@ -252,38 +252,116 @@ export async function batchUploadFiles(
   }
 }
 
-// Search across multiple vector stores
+// Search across multiple vector stores with enhanced error handling and performance
 export async function searchMultipleStores(
   apiKey: string,
   query: string,
   vectorStoreIds: string[],
   config?: RetrievalPipelineConfig
 ): Promise<FileSearchResult[]> {
+  if (!apiKey) {
+    throw new Error('API key is required for multi-store search')
+  }
+  
+  if (!query.trim()) {
+    throw new Error('Query cannot be empty')
+  }
+  
+  if (!vectorStoreIds.length) {
+    return []
+  }
+
   const openai = new OpenAI({ apiKey })
+  const maxResults = config?.topK || 5
+  const enableReranking = config?.reranking ?? true
   
   try {
-    // Search each vector store in parallel
-    const searchPromises = vectorStoreIds.map(storeId =>
-      enhancedRetrieval(query, storeId, openai, config)
+    // Search each vector store with error isolation
+    const searchResults = await Promise.allSettled(
+      vectorStoreIds.map(async (storeId) => {
+        try {
+          return await enhancedRetrieval(query, storeId, openai, {
+            ...config,
+            topK: Math.ceil(maxResults * 1.5) // Get more results per store for better final ranking
+          })
+        } catch (error) {
+          console.warn(`Failed to search vector store ${storeId}:`, error)
+          return [] // Return empty array on failure instead of throwing
+        }
+      })
     )
     
-    const allResults = await Promise.all(searchPromises)
+    // Extract successful results and log failures
+    const allResults: FileSearchResult[] = []
+    const failedStores: string[] = []
     
-    // Combine and deduplicate results
-    const combinedResults = allResults.flat()
-    const uniqueResults = Array.from(
-      new Map(combinedResults.map(r => [r.id, r])).values()
-    )
+    searchResults.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        allResults.push(...result.value)
+      } else {
+        failedStores.push(vectorStoreIds[index])
+        console.warn(`Search failed for store ${vectorStoreIds[index]}:`, result.reason)
+      }
+    })
     
-    // Re-rank combined results
-    if (config?.reranking) {
-      // Apply final reranking on combined results
-      return uniqueResults.sort((a, b) => b.score - a.score).slice(0, config.topK || 5)
+    if (failedStores.length > 0) {
+      console.warn(`Failed to search ${failedStores.length}/${vectorStoreIds.length} vector stores`)
+    }
+    
+    // Early return if no results
+    if (allResults.length === 0) {
+      return []
+    }
+    
+    // Deduplicate by file_id with score aggregation
+    const resultMap = new Map<string, FileSearchResult>()
+    
+    allResults.forEach(result => {
+      const key = result.file_id || result.id || result.content.substring(0, 50)
+      const existing = resultMap.get(key)
+      
+      if (!existing || result.score > existing.score) {
+        resultMap.set(key, {
+          ...result,
+          // Boost score slightly if found in multiple stores
+          score: existing ? Math.min(result.score * 1.1, 1.0) : result.score
+        })
+      }
+    })
+    
+    const uniqueResults = Array.from(resultMap.values())
+    
+    // Apply final ranking and limit results
+    if (enableReranking && uniqueResults.length > maxResults) {
+      // Sort by score descending and apply diversity filtering
+      const sortedResults = uniqueResults.sort((a, b) => b.score - a.score)
+      
+      // Simple diversity filter - avoid too many results from same file
+      const diverseResults: FileSearchResult[] = []
+      const fileNameCounts = new Map<string, number>()
+      
+      for (const result of sortedResults) {
+        if (diverseResults.length >= maxResults) break
+        
+        const fileName = result.file_name || 'unknown'
+        const count = fileNameCounts.get(fileName) || 0
+        
+        // Allow max 2 results per file to maintain diversity
+        if (count < 2) {
+          diverseResults.push(result)
+          fileNameCounts.set(fileName, count + 1)
+        }
+      }
+      
+      return diverseResults
     }
     
     return uniqueResults
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxResults)
+      
   } catch (error) {
-    console.error('Error searching multiple stores:', error)
-    throw new Error('Failed to search across multiple vector stores')
+    console.error('Error in searchMultipleStores:', error)
+    throw new Error(`Failed to search across multiple vector stores: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
