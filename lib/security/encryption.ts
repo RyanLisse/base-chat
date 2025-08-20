@@ -1,42 +1,65 @@
-import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync, createHash } from "crypto"
+// Server-side encryption (Node.js) using crypto
+// Client-side: use web-crypto.ts. This module will throw if imported in the browser or non-Node runtimes.
+
+// Conditional import to prevent errors in browser environment
+let crypto: any = null
+if (typeof window === 'undefined') {
+  try {
+    crypto = require('crypto')
+  } catch (e) {
+    console.warn('Node.js crypto module not available')
+  }
+}
 
 // Enhanced encryption with multiple layers of security
 const ALGORITHM = "aes-256-gcm"
 const SALT_LENGTH = 32
-const IV_LENGTH = 16
+const IV_LENGTH = 12
 const TAG_LENGTH = 16
 const ITERATIONS = 100000
 
-// Get encryption key from environment
-function getEncryptionKey(): Buffer {
+// Get encryption key from environment (Node.js only)
+function getEncryptionKey(): any {
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side encryption not available. Use web-crypto.ts for client-side encryption.')
+  }
+
   const masterKey = process.env.ENCRYPTION_KEY
   if (!masterKey) {
     throw new Error("ENCRYPTION_KEY environment variable is required")
   }
 
   // Derive key using PBKDF2 for additional security
-  const salt = process.env.ENCRYPTION_SALT || "BaseChat-Default-Salt-2025"
-  return pbkdf2Sync(masterKey, salt, ITERATIONS, 32, "sha256")
+  const salt = process.env.ENCRYPTION_SALT
+  if (!salt) {
+    throw new Error("ENCRYPTION_SALT environment variable is required")
+  }
+  return crypto.pbkdf2Sync(masterKey, salt, ITERATIONS, 32, "sha256")
 }
 
-// Encrypt API key with AES-256-GCM
+// Encrypt API key with AES-256-GCM (Node.js only)
 export function encryptApiKey(plaintext: string, userId?: string): {
   encrypted: string
   iv: string
   authTag: string
   masked: string
 } {
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side encryption not available. Use web-crypto.ts for client-side encryption.')
+  }
+
   if (!plaintext) {
     throw new Error("API key cannot be empty")
   }
 
   const key = getEncryptionKey()
-  const iv = randomBytes(IV_LENGTH)
-  const cipher = createCipheriv(ALGORITHM, key, iv)
+  const iv = crypto.randomBytes(IV_LENGTH)
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv)
 
   // Add additional authenticated data (AAD) if userId provided
   if (userId) {
-    cipher.setAAD(Buffer.from(userId), { plaintextLength: plaintext.length })
+    // For GCM, plaintextLength isn't needed
+    cipher.setAAD(Buffer.from(userId))
   }
 
   let encrypted = cipher.update(plaintext, "utf8", "hex")
@@ -51,24 +74,27 @@ export function encryptApiKey(plaintext: string, userId?: string): {
   }
 }
 
-// Decrypt API key
+// Decrypt API key (Node.js only)
 export function decryptApiKey(
-  encryptedData: string, 
-  ivHex: string, 
-  authTagHex?: string,
+  encryptedData: string,
+  ivHex: string,
+  authTagHex: string,
   userId?: string
 ): string {
-  const key = getEncryptionKey()
-  const iv = Buffer.from(ivHex, "hex")
-  const decipher = createDecipheriv(ALGORITHM, key, iv)
-
-  // Set auth tag if provided (for GCM mode)
-  if (authTagHex) {
-    const authTag = Buffer.from(authTagHex, "hex")
-    decipher.setAuthTag(authTag)
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side encryption not available. Use web-crypto.ts for client-side encryption.')
   }
 
-  // Add AAD if userId provided
+  const key = getEncryptionKey()
+  const iv = Buffer.from(ivHex, "hex")
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv)
+
+  if (!authTagHex) {
+    throw new Error('authTagHex is required for AES-GCM decryption')
+  }
+  const authTag = Buffer.from(authTagHex, "hex")
+  decipher.setAuthTag(authTag)
+
   if (userId) {
     decipher.setAAD(Buffer.from(userId))
   }
@@ -93,25 +119,37 @@ export function maskApiKey(key: string): string {
   return `${prefix}${masked}${suffix}`
 }
 
-// Hash API key for comparison without decryption
+// Hash API key for comparison without decryption (Node.js only)
 export function hashApiKey(key: string, salt?: string): string {
-  const actualSalt = salt || randomBytes(16).toString("hex")
-  const hash = pbkdf2Sync(key, actualSalt, ITERATIONS, 64, "sha512")
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side hashing not available. Use password-encryption.ts for client-compatible hashing.')
+  }
+
+  const actualSalt = salt || crypto.randomBytes(16).toString("hex")
+  const hash = crypto.pbkdf2Sync(key, actualSalt, ITERATIONS, 64, "sha512")
   return `${actualSalt}:${hash.toString("hex")}`
 }
 
-// Verify hashed API key
+// Verify hashed API key (Node.js only)
 export function verifyHashedApiKey(key: string, hashedKey: string): boolean {
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side hashing not available. Use password-encryption.ts for client-compatible hashing.')
+  }
+
   const [salt, hash] = hashedKey.split(":")
   if (!salt || !hash) return false
 
-  const computedHash = pbkdf2Sync(key, salt, ITERATIONS, 64, "sha512")
-  return computedHash.toString("hex") === hash
+  const computedHash = crypto.pbkdf2Sync(key, salt, ITERATIONS, 64, "sha512")
+  return secureCompare(computedHash.toString("hex"), hash)
 }
 
-// Generate a secure random API key
+// Generate a secure random API key (Node.js only)
 export function generateApiKey(prefix: string = "sk"): string {
-  const randomPart = randomBytes(32).toString("base64url")
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side random generation not available. Use web-crypto.ts for client-side generation.')
+  }
+
+  const randomPart = crypto.randomBytes(32).toString("base64url")
   return `${prefix}-${randomPart}`
 }
 
@@ -157,12 +195,19 @@ export function rotateApiKey(
 // Secure comparison to prevent timing attacks
 export function secureCompare(a: string, b: string): boolean {
   if (a.length !== b.length) return false
-  
+  if (crypto && typeof window === 'undefined') {
+    try {
+      const aBuf = Buffer.from(a)
+      const bBuf = Buffer.from(b)
+      return crypto.timingSafeEqual(aBuf, bBuf)
+    } catch {
+      // fall through
+    }
+  }
   let result = 0
   for (let i = 0; i < a.length; i++) {
     result |= a.charCodeAt(i) ^ b.charCodeAt(i)
   }
-  
   return result === 0
 }
 
