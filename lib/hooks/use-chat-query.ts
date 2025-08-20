@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { useChatStore } from '@/lib/stores/chat-store'
 import type { Chats } from '@/lib/types/index'
 import type { Message } from '@ai-sdk/react'
@@ -58,14 +59,20 @@ export function useChatsQuery(userId?: string) {
     queryFn: () => fetchChats(userId!),
     enabled: !!userId,
     staleTime: 1000 * 60 * 2, // 2 minutes
-    onSuccess: (data) => {
-      setChats(data)
-      setLoading(false)
-    },
-    onError: (error) => {
-      setError(error instanceof Error ? error.message : 'Unknown error')
-    },
   })
+  
+  useEffect(() => {
+    if (query.data) {
+      setChats(query.data)
+      setLoading(false)
+    }
+  }, [query.data, setChats, setLoading])
+  
+  useEffect(() => {
+    if (query.error) {
+      setError(query.error instanceof Error ? query.error.message : 'Unknown error')
+    }
+  }, [query.error, setError])
   
   const createMutation = useMutation({
     mutationFn: createChat,
@@ -169,16 +176,20 @@ export function useMessagesQuery(chatId: string | null) {
     queryFn: () => fetchMessages(chatId!),
     enabled: !!chatId,
     staleTime: 1000 * 60, // 1 minute
-    onSuccess: (data) => {
-      if (chatId) {
-        setMessages(chatId, data)
-        setLoading(false)
-      }
-    },
-    onError: (error) => {
-      setError(error instanceof Error ? error.message : 'Unknown error')
-    },
   })
+  
+  useEffect(() => {
+    if (query.data && chatId) {
+      setMessages(chatId, query.data)
+      setLoading(false)
+    }
+  }, [query.data, chatId, setMessages, setLoading])
+  
+  useEffect(() => {
+    if (query.error) {
+      setError(query.error instanceof Error ? query.error.message : 'Unknown error')
+    }
+  }, [query.error, setError])
   
   return {
     messages: query.data,

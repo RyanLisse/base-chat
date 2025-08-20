@@ -1,4 +1,15 @@
-import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync, createHash } from "crypto"
+// Client-side encryption using Web Crypto API
+// This file is deprecated - use web-crypto.ts instead for client-side encryption
+
+// Conditional import to prevent errors in browser environment
+let crypto: any = null
+if (typeof window === 'undefined') {
+  try {
+    crypto = require('crypto')
+  } catch (e) {
+    console.warn('Node.js crypto module not available')
+  }
+}
 
 // Enhanced encryption with multiple layers of security
 const ALGORITHM = "aes-256-gcm"
@@ -7,8 +18,12 @@ const IV_LENGTH = 16
 const TAG_LENGTH = 16
 const ITERATIONS = 100000
 
-// Get encryption key from environment
-function getEncryptionKey(): Buffer {
+// Get encryption key from environment (Node.js only)
+function getEncryptionKey(): any {
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side encryption not available. Use web-crypto.ts for client-side encryption.')
+  }
+
   const masterKey = process.env.ENCRYPTION_KEY
   if (!masterKey) {
     throw new Error("ENCRYPTION_KEY environment variable is required")
@@ -16,23 +31,27 @@ function getEncryptionKey(): Buffer {
 
   // Derive key using PBKDF2 for additional security
   const salt = process.env.ENCRYPTION_SALT || "BaseChat-Default-Salt-2025"
-  return pbkdf2Sync(masterKey, salt, ITERATIONS, 32, "sha256")
+  return crypto.pbkdf2Sync(masterKey, salt, ITERATIONS, 32, "sha256")
 }
 
-// Encrypt API key with AES-256-GCM
+// Encrypt API key with AES-256-GCM (Node.js only)
 export function encryptApiKey(plaintext: string, userId?: string): {
   encrypted: string
   iv: string
   authTag: string
   masked: string
 } {
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side encryption not available. Use web-crypto.ts for client-side encryption.')
+  }
+
   if (!plaintext) {
     throw new Error("API key cannot be empty")
   }
 
   const key = getEncryptionKey()
-  const iv = randomBytes(IV_LENGTH)
-  const cipher = createCipheriv(ALGORITHM, key, iv)
+  const iv = crypto.randomBytes(IV_LENGTH)
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv)
 
   // Add additional authenticated data (AAD) if userId provided
   if (userId) {
@@ -51,19 +70,23 @@ export function encryptApiKey(plaintext: string, userId?: string): {
   }
 }
 
-// Decrypt API key
+// Decrypt API key (Node.js only)
 export function decryptApiKey(
   encryptedData: string, 
   ivHex: string, 
   authTagHex?: string,
   userId?: string
 ): string {
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side encryption not available. Use web-crypto.ts for client-side encryption.')
+  }
+
   const key = getEncryptionKey()
   const iv = Buffer.from(ivHex, "hex")
-  const decipher = createDecipheriv(ALGORITHM, key, iv)
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv)
 
   // Set auth tag if provided (for GCM mode)
-  if (authTagHex) {
+  if (authTagHex && crypto) {
     const authTag = Buffer.from(authTagHex, "hex")
     decipher.setAuthTag(authTag)
   }
@@ -93,25 +116,37 @@ export function maskApiKey(key: string): string {
   return `${prefix}${masked}${suffix}`
 }
 
-// Hash API key for comparison without decryption
+// Hash API key for comparison without decryption (Node.js only)
 export function hashApiKey(key: string, salt?: string): string {
-  const actualSalt = salt || randomBytes(16).toString("hex")
-  const hash = pbkdf2Sync(key, actualSalt, ITERATIONS, 64, "sha512")
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side hashing not available. Use password-encryption.ts for client-compatible hashing.')
+  }
+
+  const actualSalt = salt || crypto.randomBytes(16).toString("hex")
+  const hash = crypto.pbkdf2Sync(key, actualSalt, ITERATIONS, 64, "sha512")
   return `${actualSalt}:${hash.toString("hex")}`
 }
 
-// Verify hashed API key
+// Verify hashed API key (Node.js only)
 export function verifyHashedApiKey(key: string, hashedKey: string): boolean {
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side hashing not available. Use password-encryption.ts for client-compatible hashing.')
+  }
+
   const [salt, hash] = hashedKey.split(":")
   if (!salt || !hash) return false
 
-  const computedHash = pbkdf2Sync(key, salt, ITERATIONS, 64, "sha512")
+  const computedHash = crypto.pbkdf2Sync(key, salt, ITERATIONS, 64, "sha512")
   return computedHash.toString("hex") === hash
 }
 
-// Generate a secure random API key
+// Generate a secure random API key (Node.js only)
 export function generateApiKey(prefix: string = "sk"): string {
-  const randomPart = randomBytes(32).toString("base64url")
+  if (!crypto || typeof window !== 'undefined') {
+    throw new Error('Server-side random generation not available. Use web-crypto.ts for client-side generation.')
+  }
+
+  const randomPart = crypto.randomBytes(32).toString("base64url")
   return `${prefix}-${randomPart}`
 }
 

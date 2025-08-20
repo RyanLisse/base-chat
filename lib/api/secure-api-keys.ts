@@ -1,5 +1,5 @@
 import { hashApiKey, verifyApiKey } from '@/lib/security/password-encryption'
-import { encryptApiKey, decryptApiKey, maskApiKey } from '@/lib/security/encryption'
+import { encryptApiKey, decryptApiKey, maskApiKey } from '@/lib/security/web-crypto'
 import { secureStorage } from '@/lib/storage/local-storage'
 
 interface StoredApiKey {
@@ -7,7 +7,6 @@ interface StoredApiKey {
   maskedKey: string
   encryptedKey: string
   iv: string
-  authTag: string
   hash: string
   salt: string
   isActive: boolean
@@ -37,7 +36,7 @@ export class SecureApiKeyManager {
     
     const existingIndex = keys.findIndex((k) => k.provider === provider)
     
-    const { encrypted, iv, authTag, masked } = encryptApiKey(apiKey, userId)
+    const { encrypted, iv, masked } = await encryptApiKey(apiKey, userId)
     const { hash, salt } = await hashApiKey(apiKey)
     
     const newKey: StoredApiKey = {
@@ -45,7 +44,6 @@ export class SecureApiKeyManager {
       maskedKey: masked,
       encryptedKey: encrypted,
       iv,
-      authTag,
       hash,
       salt,
       isActive: true,
@@ -71,10 +69,9 @@ export class SecureApiKeyManager {
     if (!key) return null
     
     try {
-      const decrypted = decryptApiKey(
+      const decrypted = await decryptApiKey(
         key.encryptedKey,
         key.iv,
-        key.authTag,
         userId
       )
       

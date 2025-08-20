@@ -26,6 +26,47 @@ class StorageManager {
     return Date.now() - item.timestamp > item.ttl
   }
 
+  private async getOrCreateEncryptionKey(): Promise<CryptoKey> {
+    if (typeof window === 'undefined' || !window.crypto.subtle) {
+      throw new Error('Web Crypto API not available')
+    }
+
+    // Check if we have a stored key
+    const storedKeyData = localStorage.getItem('base-chat-storage-key')
+    
+    if (storedKeyData) {
+      try {
+        const keyData = JSON.parse(storedKeyData)
+        const keyBytes = new Uint8Array(keyData.keyBytes)
+        
+        return await window.crypto.subtle.importKey(
+          'raw',
+          keyBytes,
+          'AES-GCM',
+          false,
+          ['encrypt', 'decrypt']
+        )
+      } catch (error) {
+        console.warn('Failed to restore encryption key, generating new one:', error)
+      }
+    }
+
+    // Generate new persistent key
+    const key = await window.crypto.subtle.generateKey(
+      { name: 'AES-GCM', length: 256 },
+      true,
+      ['encrypt', 'decrypt']
+    )
+
+    // Export and store the key
+    const exportedKey = await window.crypto.subtle.exportKey('raw', key)
+    localStorage.setItem('base-chat-storage-key', JSON.stringify({
+      keyBytes: Array.from(new Uint8Array(exportedKey))
+    }))
+
+    return key
+  }
+
   private async encryptData(data: string): Promise<string> {
     if (!this.encrypt || typeof window === 'undefined') return data
     
@@ -33,28 +74,19 @@ class StorageManager {
       const encoder = new TextEncoder()
       const dataBuffer = encoder.encode(data)
       
-      const key = await window.crypto.subtle.generateKey(
-        { name: 'AES-GCM', length: 256 },
-        true,
-        ['encrypt', 'decrypt']
-      )
-      
+      const key = await this.getOrCreateEncryptionKey()
       const iv = window.crypto.getRandomValues(new Uint8Array(12))
+      
       const encryptedData = await window.crypto.subtle.encrypt(
         { name: 'AES-GCM', iv },
         key,
         dataBuffer
       )
       
-      const exportedKey = await window.crypto.subtle.exportKey('raw', key)
-      const keyArray = new Uint8Array(exportedKey)
-      
-      const combined = new Uint8Array(
-        keyArray.length + iv.length + encryptedData.byteLength
-      )
-      combined.set(keyArray, 0)
-      combined.set(iv, keyArray.length)
-      combined.set(new Uint8Array(encryptedData), keyArray.length + iv.length)
+      // Combine IV and encrypted data
+      const combined = new Uint8Array(iv.length + encryptedData.byteLength)
+      combined.set(iv, 0)
+      combined.set(new Uint8Array(encryptedData), iv.length)
       
       return btoa(String.fromCharCode.apply(null, Array.from(combined)))
     } catch (error) {
@@ -71,17 +103,10 @@ class StorageManager {
         atob(encryptedData).split('').map((c) => c.charCodeAt(0))
       )
       
-      const keyArray = combined.slice(0, 32)
-      const iv = combined.slice(32, 44)
-      const encrypted = combined.slice(44)
+      const iv = combined.slice(0, 12) // IV is first 12 bytes
+      const encrypted = combined.slice(12) // Rest is encrypted data
       
-      const key = await window.crypto.subtle.importKey(
-        'raw',
-        keyArray,
-        'AES-GCM',
-        false,
-        ['decrypt']
-      )
+      const key = await this.getOrCreateEncryptionKey()
       
       const decryptedData = await window.crypto.subtle.decrypt(
         { name: 'AES-GCM', iv },
@@ -128,7 +153,13 @@ class StorageManager {
       let data = await get(key)
       
       if (!data && this.fallbackToLocalStorage && typeof window !== 'undefined') {
-        data = localStorage.getItem(key)
+        const rawData = localStorage.getItem(key)
+        // Ensure sensitive data is only handled as encrypted
+        if (rawData && this.encrypt) {
+          data = rawData // Will be decrypted below
+        } else if (rawData && !this.encrypt) {
+          data = rawData
+        }
       }
 
       if (!data) return null

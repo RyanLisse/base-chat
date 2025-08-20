@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { useUserStore } from '@/lib/stores/user-store'
 import type { UserProfile } from '@/lib/user/types'
 
@@ -37,14 +38,20 @@ export function useUserQuery() {
       if (error instanceof Error && error.message.includes('401')) return false
       return failureCount < 2
     },
-    onSuccess: (data) => {
-      setUser(data)
-      setLoading(false)
-    },
-    onError: (error) => {
-      setError(error instanceof Error ? error.message : 'Unknown error')
-    },
   })
+  
+  useEffect(() => {
+    if (query.data !== undefined) {
+      setUser(query.data)
+      setLoading(false)
+    }
+  }, [query.data, setUser, setLoading])
+  
+  useEffect(() => {
+    if (query.error) {
+      setError(query.error instanceof Error ? query.error.message : 'Unknown error')
+    }
+  }, [query.error, setError])
   
   const updateMutation = useMutation({
     mutationFn: updateUserProfile,

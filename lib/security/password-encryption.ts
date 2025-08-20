@@ -1,12 +1,26 @@
 import bcrypt from 'bcryptjs'
 import { createHash, randomBytes } from 'crypto'
+import './env-validation' // Auto-validate environment on import
 
 const SALT_ROUNDS = 12
-const PEPPER = process.env.PASSWORD_PEPPER || 'BaseChat-Default-Pepper-2025'
+// Validate pepper is set in production
+if (typeof window === 'undefined' && process.env.NODE_ENV === 'production' && !process.env.PASSWORD_PEPPER) {
+  throw new Error('PASSWORD_PEPPER environment variable must be set in production')
+}
+
+const PEPPER = process.env.PASSWORD_PEPPER || (
+  process.env.NODE_ENV === 'production' 
+    ? undefined 
+    : 'BaseChat-Default-Pepper-2025-DEV-ONLY'
+)
 
 export async function hashPassword(password: string): Promise<string> {
   if (!password || password.length < 8) {
     throw new Error('Password must be at least 8 characters long')
+  }
+  
+  if (!PEPPER) {
+    throw new Error('PASSWORD_PEPPER environment variable is required')
   }
   
   const pepperedPassword = `${password}${PEPPER}`
@@ -21,6 +35,10 @@ export async function verifyPassword(
 ): Promise<boolean> {
   if (!password || !hashedPassword) {
     return false
+  }
+  
+  if (!PEPPER) {
+    throw new Error('PASSWORD_PEPPER environment variable is required')
   }
   
   const pepperedPassword = `${password}${PEPPER}`
@@ -41,6 +59,10 @@ export async function hashApiKey(apiKey: string): Promise<{
     throw new Error('API key must be at least 16 characters long')
   }
   
+  if (!PEPPER) {
+    throw new Error('PASSWORD_PEPPER environment variable is required')
+  }
+  
   const salt = randomBytes(16).toString('hex')
   const pepperedKey = `${apiKey}${PEPPER}${salt}`
   const hash = await bcrypt.hash(pepperedKey, SALT_ROUNDS)
@@ -55,6 +77,10 @@ export async function verifyApiKey(
 ): Promise<boolean> {
   if (!apiKey || !hashedKey || !salt) {
     return false
+  }
+  
+  if (!PEPPER) {
+    throw new Error('PASSWORD_PEPPER environment variable is required')
   }
   
   const pepperedKey = `${apiKey}${PEPPER}${salt}`
@@ -80,6 +106,10 @@ export async function generatePasswordResetToken(userId: string): Promise<{
   hashedToken: string
   expiresAt: Date
 }> {
+  if (!PEPPER) {
+    throw new Error('PASSWORD_PEPPER environment variable is required')
+  }
+  
   const token = generateSecureToken(32)
   const hashedToken = hashSHA256(`${token}${userId}${PEPPER}`)
   const expiresAt = new Date(Date.now() + 3600000)
@@ -92,6 +122,10 @@ export async function verifyPasswordResetToken(
   userId: string,
   hashedToken: string
 ): Promise<boolean> {
+  if (!PEPPER) {
+    throw new Error('PASSWORD_PEPPER environment variable is required')
+  }
+  
   const expectedHash = hashSHA256(`${token}${userId}${PEPPER}`)
   return timingSafeEqual(expectedHash, hashedToken)
 }
