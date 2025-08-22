@@ -3,7 +3,7 @@
 import { useChatsQuery, useMessagesQuery } from '@/lib/hooks/use-chat-query'
 import { useChatStore, chatStoreSelectors } from '@/lib/stores/chat-store'
 import type { Chats } from '@/lib/types/index'
-import type { Message } from '@ai-sdk/react'
+import type { UIMessage as Message } from '@ai-sdk/react'
 import { createContext, useContext, ReactNode, useMemo } from 'react'
 
 interface ChatContextType {

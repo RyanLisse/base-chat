@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { devtools, persist, subscribeWithSelector, createJSONStorage } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import type { Message } from '@ai-sdk/react'
+import type { UIMessage as Message } from '@ai-sdk/react'
 import type { Chats } from '@/lib/types/index'
 import { get, set as idbSet, del } from 'idb-keyval'
 

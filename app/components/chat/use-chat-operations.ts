@@ -76,7 +76,7 @@ export function useChatOperations({
       if (storedGuestChatId) return storedGuestChatId
     }
 
-    if (messages.length === 0) {
+    if (!messages || messages.length === 0) {
       try {
         const newChat = await createNewChat(
           userId,
@@ -120,20 +120,22 @@ export function useChatOperations({
   // Message handlers
   const handleDelete = useCallback(
     (id: string) => {
-      setMessages(messages.filter((message) => message.id !== id))
+      setMessages((prevMessages) => 
+        (prevMessages || []).filter((message) => message.id !== id)
+      )
     },
-    [messages, setMessages]
+    [setMessages]
   )
 
   const handleEdit = useCallback(
     (id: string, newText: string) => {
-      setMessages(
-        messages.map((message) =>
+      setMessages((prevMessages) =>
+        (prevMessages || []).map((message) =>
           message.id === id ? { ...message, content: newText } : message
         )
       )
     },
-    [messages, setMessages]
+    [setMessages]
   )
 
   return {

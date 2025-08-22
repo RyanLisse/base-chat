@@ -3,7 +3,7 @@ import { toast } from "@/components/ui/toast"
 import { SYSTEM_PROMPT_DEFAULT } from "@/lib/config"
 import { API_ROUTE_CHAT } from "@/lib/routes"
 import type { UserProfile } from "@/lib/user/types"
-import type { Message } from "@ai-sdk/react"
+import type { UIMessage as Message } from "@ai-sdk/react"
 import { useChat } from "@ai-sdk/react"
 import { useSearchParams } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -81,17 +81,18 @@ export function useChatCore({
   }, [])
 
   // Initialize useChat
+  // Manage input state separately for v5
+  const [inputValue, setInputValue] = useState(draftValue)
+  
   const {
     messages,
     input,
-    handleSubmit,
     status,
     error,
     reload,
     stop,
     setMessages,
-    setInput,
-    append,
+    sendMessage,
   } = useChat({
     api: API_ROUTE_CHAT,
     initialMessages,
@@ -103,9 +104,9 @@ export function useChatCore({
   // Handle search params on mount
   useEffect(() => {
     if (prompt && typeof window !== "undefined") {
-      requestAnimationFrame(() => setInput(prompt))
+      requestAnimationFrame(() => setInputValue(prompt))
     }
-  }, [prompt, setInput])
+  }, [prompt, setInputValue])
 
   // Reset messages when navigating from a chat to home
   if (
@@ -130,28 +131,17 @@ export function useChatCore({
   const submit = useCallback(async () => {
     setIsSubmitting(true)
 
-    // Create optimistic message immediately
-    const optimisticId = `optimistic-${Date.now().toString()}`
-    const optimisticAttachments = files.length > 0 ? createOptimisticAttachments(files) : []
-    const optimisticMessage = {
-      id: optimisticId,
-      content: input,
-      role: "user" as const,
-      createdAt: new Date(),
-      experimental_attachments: optimisticAttachments.length > 0 ? optimisticAttachments : undefined,
-    }
-
-    // Add optimistic message to UI
-    setMessages((prev) => [...prev, optimisticMessage])
-    setInput("")
-
+    const currentInput = inputValue
     const submittedFiles = [...files]
+    
+    // Clear input immediately for better UX
+    setInputValue("")
     setFiles([])
 
     try {
       // Use BDD scenario for message submission
       const context: MessageSubmissionContext = {
-        input,
+        input: currentInput,
         files: submittedFiles,
         user,
         selectedModel,
@@ -165,9 +155,9 @@ export function useChatCore({
       const result = await submitMessageScenario(context, operationDependencies)
 
       if (!result.success) {
-        // Handle operation failure
-        setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
-        cleanupOptimisticAttachments(optimisticMessage.experimental_attachments)
+        // Handle operation failure - restore input
+        setInputValue(currentInput)
+        setFiles(submittedFiles)
         
         if (result.error) {
           toast({ title: result.error, status: "error" })
@@ -178,12 +168,10 @@ export function useChatCore({
       // Operation succeeded - proceed with submission
       const { chatId: currentChatId, requestOptions } = result.data!
 
-      handleSubmit(undefined, requestOptions)
+      // In v5, use sendMessage which handles everything including optimistic updates
+      // v5 expects an object with text property
+      await sendMessage({ text: currentInput }, requestOptions)
       
-      // Clean up optimistic message and cache the real one
-      setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
-      cleanupOptimisticAttachments(optimisticMessage.experimental_attachments)
-      cacheAndAddMessage(optimisticMessage)
       clearDraft()
 
       // Bump chat if there were previous messages
@@ -192,15 +180,15 @@ export function useChatCore({
       }
 
     } catch (error) {
-      // Handle unexpected errors
-      setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
-      cleanupOptimisticAttachments(optimisticMessage.experimental_attachments)
+      // Handle unexpected errors - restore input
+      setInputValue(currentInput)
+      setFiles(submittedFiles)
       handleChatError(error as Error, "Message submission")
     } finally {
       setIsSubmitting(false)
     }
   }, [
-    input,
+    inputValue,
     files,
     user,
     selectedModel,
@@ -212,10 +200,10 @@ export function useChatCore({
     operationDependencies,
     createOptimisticAttachments,
     setMessages,
-    setInput,
+    setInputValue,
     setFiles,
     cleanupOptimisticAttachments,
-    handleSubmit,
+    sendMessage,
     cacheAndAddMessage,
     clearDraft,
     messages.length,
@@ -226,17 +214,6 @@ export function useChatCore({
   const handleSuggestion = useCallback(
     async (suggestion: string) => {
       setIsSubmitting(true)
-
-      // Create optimistic message for suggestion
-      const optimisticId = `optimistic-${Date.now().toString()}`
-      const optimisticMessage = {
-        id: optimisticId,
-        content: suggestion,
-        role: "user" as const,
-        createdAt: new Date(),
-      }
-
-      setMessages((prev) => [...prev, optimisticMessage])
 
       try {
         // Use BDD scenario for suggestion submission
@@ -258,32 +235,19 @@ export function useChatCore({
         const result = await submitSuggestionScenario(suggestion, context, dependencies)
 
         if (!result.success) {
-          // Handle operation failure
-          setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
-          
           if (result.error) {
             toast({ title: result.error, status: "error" })
           }
           return
         }
 
-        // Operation succeeded - proceed with append
+        // Operation succeeded - proceed with sendMessage
         const { requestOptions } = result.data!
 
-        append(
-          {
-            role: "user",
-            content: suggestion,
-          },
-          requestOptions
-        )
-        
-        // Clean up optimistic message
-        setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
+        // v5 sendMessage expects an object with text property for proper formatting
+        await sendMessage({ text: suggestion }, requestOptions)
 
       } catch (error) {
-        // Handle unexpected errors
-        setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
         handleChatError(error as Error, "Suggestion submission")
       } finally {
         setIsSubmitting(false)
@@ -299,7 +263,7 @@ export function useChatCore({
       systemPrompt,
       checkLimitsAndNotify,
       ensureChatExists,
-      append,
+      sendMessage,
       setMessages,
     ]
   )
@@ -334,28 +298,27 @@ export function useChatCore({
     }
   }, [user, chatId, selectedModel, isAuthenticated, systemPrompt, reasoningEffort, reload])
 
-  // Handle input change - now with access to the real setInput function!
+  // Handle input change - manage input state locally for v5
   const { setDraftValue } = useChatDraft(chatId)
   const handleInputChange = useCallback(
     (value: string) => {
-      setInput(value)
+      setInputValue(value)
       setDraftValue(value)
     },
-    [setInput, setDraftValue]
+    [setInputValue, setDraftValue]
   )
 
   return {
     // Chat state
     messages,
-    input,
-    handleSubmit,
+    input: inputValue,
     status,
     error,
     reload,
     stop,
     setMessages,
-    setInput,
-    append,
+    setInput: setInputValue,
+    sendMessage,
     isAuthenticated,
     systemPrompt,
     hasSentFirstMessageRef,

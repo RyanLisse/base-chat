@@ -30,7 +30,7 @@ interface AISdkChatbotProps {
   /** System prompt */
   systemPrompt?: string
   /** Max tokens for response */
-  maxTokens?: number
+  maxOutputTokens?: number
   /** Temperature for response generation */
   temperature?: number
   /** Called when a message is finished */
@@ -65,7 +65,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
   initialMessages = [],
   initialInput = '',
   systemPrompt,
-  maxTokens = 1000,
+  maxOutputTokens = 1000,
   temperature = 0.7,
   onFinish,
   onError,
@@ -96,7 +96,7 @@ export const AISdkChatbot = memo(function AISdkChatbot({
     initialInput,
     body: {
       systemPrompt,
-      maxTokens,
+      maxOutputTokens,
       temperature,
     },
     onFinish: (message) => {

@@ -3,7 +3,7 @@ import { getOrCreateGuestUserId } from "@/lib/api"
 import { MESSAGE_MAX_LENGTH, SYSTEM_PROMPT_DEFAULT } from "@/lib/config"
 import { Attachment } from "@/lib/file-handling"
 import type { UserProfile } from "@/lib/user/types"
-import type { Message } from "@ai-sdk/react"
+import type { UIMessage as Message } from "@ai-sdk/react"
 
 /**
  * BDD-style chat operations extracted from use-chat-core.ts

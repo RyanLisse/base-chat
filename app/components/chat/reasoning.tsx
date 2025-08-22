@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { useState } from "react"
 
 type ReasoningProps = {
-  reasoning: string
+  reasoningText: string
   isStreaming?: boolean
 }
 
@@ -15,7 +15,7 @@ const TRANSITION = {
   bounce: 0,
 }
 
-export function Reasoning({ reasoning, isStreaming }: ReasoningProps) {
+export function Reasoning({ reasoningText, isStreaming }: ReasoningProps) {
   const [wasStreaming, setWasStreaming] = useState(isStreaming ?? false)
   const [isExpanded, setIsExpanded] = useState(() => isStreaming ?? true)
 

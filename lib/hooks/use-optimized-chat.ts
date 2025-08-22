@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
-import type { Message } from '@ai-sdk/react'
+import type { UIMessage as Message } from '@ai-sdk/react'
 import { useChatStore } from '@/lib/stores/chat-store'
 import { storage } from '@/lib/storage/local-storage'
 import { toast } from '@/components/ui/toast'
@@ -73,7 +73,7 @@ export function useOptimizedChat({
     stop,
     setMessages,
     setInput,
-    append,
+    sendMessage,
   } = useChat({
     api: '/api/chat',
     initialMessages,
@@ -206,7 +206,7 @@ export function useOptimizedChat({
     setFiles,
     enableSearch,
     setEnableSearch,
-    append,
+    sendMessage,
     setMessages,
   }
 }

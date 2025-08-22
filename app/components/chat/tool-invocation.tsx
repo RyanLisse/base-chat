@@ -1,7 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import type { ToolInvocationUIPart } from "@ai-sdk/ui-utils"
+import type { ToolInvocationUIPart } from 'ai'
 import {
   CaretDown,
   CheckCircle,

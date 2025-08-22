@@ -14,7 +14,7 @@ type ModelChat = {
   model: ModelConfig
   messages: any[]
   isLoading: boolean
-  append: (message: any, options?: any) => void
+  sendMessage: (message: any, options?: any) => void
   stop: () => void
 }
 
@@ -51,8 +51,9 @@ export function useMultiChat(models: ModelConfig[]): ModelChat[] {
         model,
         messages: chatHook.messages,
         isLoading: chatHook.isLoading,
-        append: (message: any, options?: any) => {
-          return chatHook.append(message, options)
+        sendMessage: (message: any, options?: any) => {
+          // v5 uses sendMessage instead of append
+          return chatHook.sendMessage(message, options)
         },
         stop: chatHook.stop,
       }

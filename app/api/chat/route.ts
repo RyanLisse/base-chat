@@ -3,9 +3,9 @@ import { logger } from "@/lib/logger"
 import { getAllModels } from "@/lib/models"
 import { getProviderForModel } from "@/lib/openproviders/provider-map"
 import type { ProviderWithoutOllama } from "@/lib/user-keys"
-import type { Attachment } from "@ai-sdk/ui-utils"
-import { streamText } from "ai"
-import type { Message as MessageAISDK, ToolSet } from "ai"
+import type { LanguageModelUsage } from 'ai'
+import { streamText, convertToModelMessages } from "ai"
+import type { UIMessage as MessageAISDK, ToolSet } from "ai"
 import { fileSearchTool } from "@/lib/tools/file-search"
 import {
   isLangSmithEnabled,
@@ -32,7 +32,7 @@ type TokenUsage = {
 }
 
 type ResponseWithUsage = {
-  usage?: TokenUsage
+  usage?: LanguageModelUsage
   messages: unknown[]
 }
 
@@ -67,9 +67,9 @@ export async function POST(req: Request) {
     // Normalize legacy/alias model IDs
     const resolvedModel = model === 'gpt-4o-mini' ? 'gpt-5-mini' : model
 
-    if (!messages || !chatId || !userId) {
+    if (!messages || !Array.isArray(messages) || messages.length === 0 || !chatId || !userId) {
       return new Response(
-        JSON.stringify({ error: "Error, missing information" }),
+        JSON.stringify({ error: "Error, missing or invalid messages" }),
         { status: 400 }
       )
     }
@@ -88,12 +88,16 @@ export async function POST(req: Request) {
     const userMessage = messages[messages.length - 1]
 
     if (supabase && userMessage?.role === "user") {
+      // Extract text content - v5 UIMessage has content as string
+      const textContent = (userMessage as any).content || ''
+      const attachments = (userMessage as any).attachments || []
+      
       await logUserMessage({
         supabase,
         userId,
         chatId,
-        content: userMessage.content,
-        attachments: userMessage.experimental_attachments as Attachment[],
+        content: textContent,
+        attachments: attachments as any[],
         model: resolvedModel,
         isAuthenticated,
         message_group_id,
@@ -143,7 +147,7 @@ export async function POST(req: Request) {
         name: 'chat-completion',
         inputs: {
           model: resolvedModel,
-          messages: messages.map((m: MessageAISDK) => ({ role: m.role, content: m.content })),
+          messages: messages.map((m: MessageAISDK) => ({ role: m.role, content: (m as any).content || '' })),
           reasoningEffort,
           enableSearch,
         },
@@ -175,14 +179,115 @@ export async function POST(req: Request) {
       } : undefined,
     }
 
+    // Convert UIMessages to ModelMessages for v5
+    // v5 expects messages with 'parts' array, not 'content' string
+    // Transform messages to the expected format
+    const messagesArray = Array.isArray(messages) ? messages : []
+    
+    const transformedMessages = messagesArray.map((msg: any) => {
+      // Ensure msg has proper structure
+      if (!msg || typeof msg !== 'object') {
+        console.warn('Invalid message format:', msg)
+        return {
+          role: 'user',
+          parts: [{ type: 'text', text: String(msg || '[Invalid message]') }]
+        }
+      }
+      
+      // If message already has parts array, use it as-is
+      if (msg.parts && Array.isArray(msg.parts)) {
+        return msg
+      }
+      
+      // Convert content to parts array format for v5
+      let parts: any[] = []
+      
+      // Handle string content
+      if (typeof msg.content === 'string') {
+        parts = [{ type: 'text', text: msg.content }]
+      }
+      // Handle array content (tool messages, etc.)
+      else if (Array.isArray(msg.content)) {
+        // Convert content array to parts
+        parts = msg.content.map((part: any) => {
+          if (typeof part === 'string') {
+            return { type: 'text', text: part }
+          } else if (part && typeof part === 'object') {
+            // Already structured part
+            return part
+          }
+          return { type: 'text', text: String(part || '') }
+        })
+      }
+      // Handle object content
+      else if (typeof msg.content === 'object' && msg.content !== null) {
+        const textContent = (msg.content as any).text || (msg.content as any).content || ''
+        parts = [{ type: 'text', text: String(textContent) }]
+      }
+      // Fallback
+      else {
+        parts = [{ 
+          type: 'text', 
+          text: String(msg.content || (msg.role === 'assistant' ? '[Assistant response]' : '[User message]'))
+        }]
+      }
+      
+      // Return message in v5 format with parts array
+      return {
+        role: msg.role || 'user',
+        parts,
+        ...(msg.id && { id: msg.id })
+      }
+    })
+    
+    // Add null check for transformedMessages
+    if (!transformedMessages || !Array.isArray(transformedMessages)) {
+      console.error('transformedMessages is not an array:', transformedMessages)
+      return new Response(
+        JSON.stringify({ error: "Failed to transform messages" }),
+        { status: 500 }
+      )
+    }
+    
+    // Ensure all messages have valid parts before conversion
+    const validatedMessages = transformedMessages.filter((msg: any) => 
+      msg && msg.role && msg.parts && Array.isArray(msg.parts) && msg.parts.length > 0
+    )
+    
+    if (validatedMessages.length === 0) {
+      console.error('No valid messages after filtering:', { original: messages, transformed: transformedMessages })
+      return new Response(
+        JSON.stringify({ error: "No valid messages to process" }),
+        { status: 400 }
+      )
+    }
+    
+    // Log before conversion
+    console.log('Before convertToModelMessages:', {
+      validatedMessages: JSON.stringify(validatedMessages),
+      isArray: Array.isArray(validatedMessages),
+      length: validatedMessages.length
+    })
+    
+    let modelMessages;
+    try {
+      modelMessages = convertToModelMessages(validatedMessages)
+    } catch (conversionError) {
+      console.error('Error in convertToModelMessages:', conversionError)
+      console.error('validatedMessages that caused error:', validatedMessages)
+      return new Response(
+        JSON.stringify({ error: "Failed to convert messages to model format" }),
+        { status: 500 }
+      )
+    }
+    
     const result = streamText({
       model: modelConfig.apiSdk(apiKey, modelSettings),
       system: effectiveSystemPrompt,
-      messages: messages,
+      messages: modelMessages,
       tools,
       // GPT-5 models only support default temperature = 1
       temperature: isGPT5Model ? 1 : undefined,
-      maxSteps: enableSearch && isGPT5Model ? 10 : 1,
       onError: (err: unknown) => {
         console.error("Streaming error occurred:", err)
         // Don't set streamError anymore - let the AI SDK handle it through the stream
@@ -223,8 +328,8 @@ export async function POST(req: Request) {
               runId: actualRunId,
               metrics: {
                 totalTokens: usage.totalTokens,
-                promptTokens: usage.promptTokens,
-                completionTokens: usage.completionTokens,
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
                 reasoningEffort,
                 enableSearch,
               },
@@ -234,14 +339,8 @@ export async function POST(req: Request) {
       },
     })
 
-    return result.toDataStreamResponse({
-      sendReasoning: true,
-      sendSources: true,
-      getErrorMessage: (error: unknown) => {
-        console.error("Error forwarded to client:", error)
-        return extractErrorMessage(error)
-      },
-    })
+    // v5 uses toUIMessageStreamResponse for useChat hook compatibility
+    return result.toUIMessageStreamResponse();
   } catch (err: unknown) {
     console.error("Error in /api/chat:", err)
     const error = err as {

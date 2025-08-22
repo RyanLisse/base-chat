@@ -14,7 +14,7 @@ interface FileSearchResult {
 
 export const fileSearchTool = tool({
   description: 'Advanced search through uploaded documents using OpenAI vector stores with query rewriting and reranking',
-  parameters: z.object({
+  inputSchema: z.object({
     query: z.string().describe('Search query to find relevant information'),
     max_results: z.number().optional().default(5).describe('Maximum number of results to return'),
     file_types: z.array(z.string()).optional().describe('Filter by file types (e.g., pdf, txt, docx)'),

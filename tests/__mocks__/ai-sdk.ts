@@ -6,13 +6,14 @@ export const mockUseChat = {
   handleInputChange: vi.fn(),
   handleSubmit: vi.fn(),
   setInput: vi.fn(),
-  append: vi.fn(),
+  sendMessage: vi.fn(),
   reload: vi.fn(),
   stop: vi.fn(),
   isLoading: false,
   error: null,
   data: [],
   setData: vi.fn(),
+  setMessages: vi.fn(),
 }
 
 export const mockStreamText = vi.fn(() => ({
@@ -25,7 +26,7 @@ export const mockStreamText = vi.fn(() => ({
 
 export const mockGenerateText = vi.fn(() => ({
   text: 'Mocked AI response',
-  usage: { promptTokens: 10, completionTokens: 20 },
+  usage: { inputTokens: 10, outputTokens: 20 },
 }))
 
 // Mock AI SDK modules

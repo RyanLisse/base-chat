@@ -31,7 +31,7 @@ export function AISdkChatbotExample() {
   )
 
   const [apiConfig, setApiConfig] = useState({
-    maxTokens: 1000,
+    maxOutputTokens: 1000,
     temperature: 0.7,
   })
 
@@ -65,7 +65,6 @@ export function AISdkChatbotExample() {
           Optimized implementation following AI SDK v4+ best practices
         </p>
       </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Configuration Panel */}
         <Card className="lg:col-span-1">
@@ -92,12 +91,12 @@ export function AISdkChatbotExample() {
               <input
                 id="max-tokens"
                 type="number"
-                value={apiConfig.maxTokens}
+                value={apiConfig.maxOutputTokens}
                 onChange={(e) => {
                   const next = parseInt(e.target.value, 10)
                   setApiConfig(prev => ({
                     ...prev,
-                    maxTokens: Number.isNaN(next) ? 1000 : next
+                    maxOutputTokens: Number.isNaN(next) ? 1000 : next
                   }))
                 }}
                 className="w-full mt-1 p-2 border rounded text-sm"
@@ -151,7 +150,7 @@ export function AISdkChatbotExample() {
             apiEndpoint="/api/chat"
             initialMessages={messages}
             systemPrompt={systemPrompt}
-            maxTokens={apiConfig.maxTokens}
+            maxTokens={apiConfig.maxOutputTokens}
             temperature={apiConfig.temperature}
             onFinish={handleMessageFinish}
             onError={handleError}
@@ -161,7 +160,6 @@ export function AISdkChatbotExample() {
           />
         </Card>
       </div>
-
       {/* Documentation */}
       <Card>
         <CardHeader>
@@ -210,5 +208,5 @@ export function AISdkChatbotExample() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

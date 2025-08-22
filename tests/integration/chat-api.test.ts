@@ -31,7 +31,7 @@ vi.mock('ai', () => ({
   streamText: vi.fn(() => ({
     toDataStreamResponse: () => new Response('mocked stream response'),
     finishReason: 'stop',
-    usage: { totalTokens: 100, promptTokens: 50, completionTokens: 50 },
+    usage: { totalTokens: 100, inputTokens: 50, outputTokens: 50 },
   })),
 }))
 

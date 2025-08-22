@@ -2,7 +2,7 @@
 
 import { toast } from "@/components/ui/toast"
 import { useChatSession } from "@/lib/chat-store/session/provider"
-import type { Message as MessageAISDK } from "ai"
+import type { UIMessage as MessageAISDK } from "ai"
 import { createContext, useContext, useEffect, useState } from "react"
 import { writeToIndexedDB } from "../persist"
 import {

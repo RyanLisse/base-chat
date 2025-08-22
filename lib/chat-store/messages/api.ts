@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client"
 import { isSupabaseEnabled } from "@/lib/supabase/config"
-import type { Message as MessageAISDK } from "ai"
+import type { UIMessage as MessageAISDK } from "ai"
 import { readFromIndexedDB, writeToIndexedDB } from "../persist"
 
 export async function getMessagesFromDb(
@@ -36,7 +36,7 @@ export async function getMessagesFromDb(
     parts: (message?.parts as MessageAISDK["parts"]) || undefined,
     message_group_id: message.message_group_id,
     model: message.model,
-  }))
+  }));
 }
 
 async function insertMessageToDb(chatId: string, message: MessageAISDK) {

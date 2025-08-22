@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useChatStore } from '@/lib/stores/chat-store'
 import type { Chats } from '@/lib/types/index'
-import type { Message } from '@ai-sdk/react'
+import type { UIMessage as Message } from '@ai-sdk/react'
 
 const CHATS_QUERY_KEY = ['chats'] as const
 const MESSAGES_QUERY_KEY = (chatId: string) => ['messages', chatId] as const

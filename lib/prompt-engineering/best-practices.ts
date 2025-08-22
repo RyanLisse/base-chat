@@ -9,7 +9,7 @@ interface PromptConfig {
   context?: string[]
   examples?: Array<{ input: string; output: string }>
   temperature?: number
-  maxTokens?: number
+  maxOutputTokens?: number
 }
 
 /**

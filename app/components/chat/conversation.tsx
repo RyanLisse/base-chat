@@ -65,7 +65,10 @@ export function Conversation({
                 status={status}
                 onQuote={onQuote}
               >
-                {message.content}
+                {/* In v5, content may be in parts array instead of content field */}
+                {message.content || 
+                 (message.parts?.find((part: any) => part.type === 'text')?.text) || 
+                 ''}
               </Message>
             )
           })}

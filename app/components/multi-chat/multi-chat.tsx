@@ -276,7 +276,8 @@ export function MultiChat() {
             },
           }
 
-          chat.append({ role: "user", content: prompt }, options)
+          // v5 uses sendMessage with text property
+          chat.sendMessage({ text: prompt }, options)
         })
       )
 
