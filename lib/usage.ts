@@ -6,6 +6,8 @@ import {
   NON_AUTH_DAILY_MESSAGE_LIMIT,
 } from "@/lib/config"
 import { SupabaseClient } from "@supabase/supabase-js"
+import { getProviderForModel } from "@/lib/openproviders/provider-map"
+import { getEffectiveApiKey, type ProviderWithoutOllama } from "@/lib/user-keys"
 
 const isFreeModel = (modelId: string) => FREE_MODELS_IDS.includes(modelId)
 const isProModel = (modelId: string) => !isFreeModel(modelId)
@@ -212,9 +214,28 @@ export async function checkUsageByModel(
   isAuthenticated: boolean
 ) {
   if (isProModel(modelId)) {
-    if (!isAuthenticated) {
-      throw new UsageLimitError("You must log in to use this model.")
+    // Determine if credentials are available (user key or env key)
+    let hasCredential = false
+    try {
+      const provider = getProviderForModel(modelId as any)
+      if (provider === "ollama") {
+        hasCredential = true
+      } else {
+        const key = await getEffectiveApiKey(
+          isAuthenticated ? userId : null,
+          provider as ProviderWithoutOllama
+        )
+        hasCredential = !!key
+      }
+    } catch {
+      // Unknown provider falls back to requiring auth
+      hasCredential = false
     }
+
+    if (!isAuthenticated && !hasCredential) {
+      throw new UsageLimitError("You must log in or provide valid API credentials to use this model.")
+    }
+
     return await checkProUsage(supabase, userId)
   }
 
@@ -228,7 +249,19 @@ export async function incrementUsageByModel(
   isAuthenticated: boolean
 ) {
   if (isProModel(modelId)) {
-    if (!isAuthenticated) return
+    if (!isAuthenticated) {
+      // Allow incrementing pro usage for guests only if credentials exist
+      try {
+        const provider = getProviderForModel(modelId as any)
+        if (provider !== "ollama") {
+          const key = await getEffectiveApiKey(null, provider as ProviderWithoutOllama)
+          if (!key) return
+        }
+      } catch {
+        // Unknown provider; don't increment
+        return
+      }
+    }
     return await incrementProUsage(supabase, userId)
   }
 

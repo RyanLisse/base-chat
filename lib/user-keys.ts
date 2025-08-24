@@ -51,3 +51,25 @@ export async function getEffectiveApiKey(
 
   return envKeyMap[provider] || null
 }
+
+// Return list of providers that have credentials configured via environment variables
+export function getProvidersWithEnvKeys(): ProviderWithoutOllama[] {
+  const result: ProviderWithoutOllama[] = []
+  const map: Record<ProviderWithoutOllama, string | undefined> = {
+    openai: env.OPENAI_API_KEY,
+    mistral: env.MISTRAL_API_KEY,
+    perplexity: env.PERPLEXITY_API_KEY,
+    google: env.GOOGLE_GENERATIVE_AI_API_KEY,
+    anthropic: env.ANTHROPIC_API_KEY,
+    xai: env.XAI_API_KEY,
+    openrouter: env.OPENROUTER_API_KEY,
+  }
+
+  (Object.keys(map) as ProviderWithoutOllama[]).forEach((p) => {
+    if (map[p] && String(map[p]).trim().length > 0) {
+      result.push(p)
+    }
+  })
+
+  return result
+}

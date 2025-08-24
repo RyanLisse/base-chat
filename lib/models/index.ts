@@ -79,6 +79,24 @@ export async function getModelsWithAccessFlags(): Promise<ModelConfig[]> {
   return [...freeModels, ...proModels]
 }
 
+// Build access flags given a set of available provider IDs
+export async function getModelsWithAccessForProviders(
+  providers: string[]
+): Promise<ModelConfig[]> {
+  const models = await getAllModels()
+  const providerSet = new Set(providers)
+
+  return models.map((model) => {
+    const isFree =
+      FREE_MODELS_IDS.includes(model.id) || model.providerId === "ollama"
+    const hasProvider = providerSet.has(model.providerId)
+    return {
+      ...model,
+      accessible: isFree || hasProvider,
+    }
+  })
+}
+
 export async function getModelsForProvider(
   provider: string
 ): Promise<ModelConfig[]> {
