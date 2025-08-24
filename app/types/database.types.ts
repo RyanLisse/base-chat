@@ -268,32 +268,200 @@ export type Database = {
       }
       user_keys: {
         Row: {
+          id?: string
           user_id: string
           provider: string
           encrypted_key: string
           iv: string
+          auth_tag: string
+          masked_key?: string
+          is_active?: boolean
+          last_used?: string | null
+          last_rotated?: string | null
           created_at: string | null
           updated_at: string | null
         }
         Insert: {
+          id?: string
           user_id: string
           provider: string
           encrypted_key: string
           iv: string
+          auth_tag: string
+          masked_key?: string
+          is_active?: boolean
+          last_used?: string | null
+          last_rotated?: string | null
           created_at?: string | null
           updated_at?: string | null
         }
         Update: {
+          id?: string
           user_id?: string
           provider?: string
           encrypted_key?: string
           iv?: string
+          auth_tag?: string
+          masked_key?: string
+          is_active?: boolean
+          last_used?: string | null
+          last_rotated?: string | null
           created_at?: string | null
           updated_at?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "user_keys_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api_key_audit_log: {
+        Row: {
+          id: string
+          user_id: string
+          provider: string
+          action: string
+          metadata?: Json
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          provider: string
+          action: string
+          metadata?: Json
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          provider?: string
+          action?: string
+          metadata?: Json
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_key_audit_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_security_settings: {
+        Row: {
+          id: string
+          user_id: string
+          config: Json
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          config: Json
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          config?: Json
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_security_settings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      realtime_sessions: {
+        Row: {
+          id: string
+          user_id: string
+          status: string
+          started_at: string | null
+          ended_at: string | null
+          metadata?: Json
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          status: string
+          started_at?: string | null
+          ended_at?: string | null
+          metadata?: Json
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          status?: string
+          started_at?: string | null
+          ended_at?: string | null
+          metadata?: Json
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realtime_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_feedback: {
+        Row: {
+          id: string
+          message_id: number
+          user_id: string
+          type: string
+          content?: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          message_id: number
+          user_id: string
+          type: string
+          content?: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          message_id?: number
+          user_id?: string
+          type?: string
+          content?: string
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_feedback_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_feedback_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"

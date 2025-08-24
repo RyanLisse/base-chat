@@ -44,11 +44,10 @@ export async function POST(req: Request) {
     const { error: dbError } = await supabase
       .from('message_feedback')
       .upsert({
-        message_id: messageId,
+        message_id: Number(messageId),
         user_id: user.id,
-        feedback,
-        comment,
-        langsmith_run_id: runId,
+        type: feedback || 'none',
+        content: comment || undefined,
       }, {
         onConflict: 'message_id,user_id',
       })
@@ -125,8 +124,8 @@ export async function GET(req: Request) {
     // Get feedback from database
     const { data, error } = await supabase
       .from('message_feedback')
-      .select('feedback, comment, created_at')
-      .eq('message_id', messageId)
+      .select('type, content, created_at')
+      .eq('message_id', Number(messageId))
       .eq('user_id', user.id)
       .single()
 
@@ -140,8 +139,8 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       success: true,
-      feedback: data?.feedback || null,
-      comment: data?.comment || null,
+      feedback: data?.type || null,
+      comment: data?.content || null,
       createdAt: data?.created_at || null,
     })
   } catch (error) {

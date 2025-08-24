@@ -87,7 +87,7 @@ export async function POST(req: Request) {
           // Try to list models as a simple test
           const models = await openai.models.list()
           if (models.data.length > 0) {
-            testResult = { success: true, error: null }
+            testResult = { success: true, error: null as any }
           }
         } catch (error: any) {
           testResult = { 
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
             messages: [{ role: 'user', content: 'Hi' }]
           })
           if (response) {
-            testResult = { success: true, error: null }
+            testResult = { success: true, error: null as any }
           }
         } catch (error: any) {
           testResult = { 
@@ -121,7 +121,7 @@ export async function POST(req: Request) {
         try {
           const mistral = createMistral({ apiKey })
           // Test by creating a minimal completion
-          testResult = { success: true, error: null }
+          testResult = { success: true, error: null as any }
         } catch (error: any) {
           testResult = { 
             success: false, 
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
         try {
           const google = createGoogleGenerativeAI({ apiKey })
           // Test by creating a provider instance
-          testResult = { success: true, error: null }
+          testResult = { success: true, error: null as any }
         } catch (error: any) {
           testResult = { 
             success: false, 
@@ -152,7 +152,7 @@ export async function POST(req: Request) {
             }
           })
           if (response.ok) {
-            testResult = { success: true, error: null }
+            testResult = { success: true, error: null as any }
           } else {
             testResult = { 
               success: false, 
