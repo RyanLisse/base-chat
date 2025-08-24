@@ -10,7 +10,7 @@ import { getProviderForModel } from "@/lib/openproviders/provider-map"
 import { sanitizeUserInput } from "@/lib/sanitize"
 import { validateUserIdentity } from "@/lib/server/api"
 import { checkUsageByModel, incrementUsage } from "@/lib/usage"
-import { getUserKey, type ProviderWithoutOllama } from "@/lib/user-keys"
+import { getUserKey, getEffectiveApiKey, type ProviderWithoutOllama } from "@/lib/user-keys"
 
 export async function validateAndTrackUsage({
   userId,
@@ -22,24 +22,37 @@ export async function validateAndTrackUsage({
 
   // Check if user is authenticated
   if (!isAuthenticated) {
-    // For unauthenticated users, only allow specific models
-    if (!NON_AUTH_ALLOWED_MODELS.includes(model)) {
-      throw new Error(
-        "This model requires authentication. Please sign in to access more models."
-      )
+    // For unauthenticated users, allow models if credentials exist via env
+    try {
+      const provider = getProviderForModel(model)
+      const hasEnvCreds =
+        provider === "ollama" ||
+        (await getEffectiveApiKey(null, provider as ProviderWithoutOllama))
+
+      if (!hasEnvCreds && !NON_AUTH_ALLOWED_MODELS.includes(model)) {
+        throw new Error(
+          "This model requires a valid API key or sign-in. Please configure provider credentials or log in."
+        )
+      }
+    } catch (e) {
+      // Unknown provider or missing credentials
+      if (!NON_AUTH_ALLOWED_MODELS.includes(model)) {
+        throw e instanceof Error ? e : new Error("Unauthorized model access")
+      }
     }
   } else {
     // For authenticated users, check API key requirements
     const provider = getProviderForModel(model)
 
     if (provider !== "ollama") {
-      const userApiKey = await getUserKey(
+      // Allow either user-provided or env-provided API keys
+      const effectiveKey = await getEffectiveApiKey(
         userId,
         provider as ProviderWithoutOllama
       )
 
-      // If no API key and model is not in free list, deny access
-      if (!userApiKey && !FREE_MODELS_IDS.includes(model)) {
+      // If no effective API key and model is not in free list, deny access
+      if (!effectiveKey && !FREE_MODELS_IDS.includes(model)) {
         throw new Error(
           `This model requires an API key for ${provider}. Please add your API key in settings or use a free model.`
         )

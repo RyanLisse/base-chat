@@ -2,10 +2,12 @@ import {
   getAllModels,
   getModelsForUserProviders,
   getModelsWithAccessFlags,
+  getModelsWithAccessForProviders,
   refreshModelsCache,
 } from "@/lib/models"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { getProvidersWithEnvKeys } from "@/lib/user-keys"
 
 export async function GET() {
   try {
@@ -28,7 +30,12 @@ export async function GET() {
     const { data: authData } = await supabase.auth.getUser()
 
     if (!authData?.user?.id) {
-      const models = await getModelsWithAccessFlags()
+      // Guest: expose access based on env-provided credentials
+      const envProviders = getProvidersWithEnvKeys()
+      const models =
+        envProviders.length > 0
+          ? await getModelsWithAccessForProviders(envProviders)
+          : await getModelsWithAccessFlags()
       return new Response(JSON.stringify({ models }), {
         status: 200,
         headers: {
@@ -56,7 +63,12 @@ export async function GET() {
     const userProviders = data?.map((k) => k.provider) || []
 
     if (userProviders.length === 0) {
-      const models = await getModelsWithAccessFlags()
+      // No user keys: fall back to env credentials if present
+      const envProviders = getProvidersWithEnvKeys()
+      const models =
+        envProviders.length > 0
+          ? await getModelsWithAccessForProviders(envProviders)
+          : await getModelsWithAccessFlags()
       return new Response(JSON.stringify({ models }), {
         status: 200,
         headers: {
