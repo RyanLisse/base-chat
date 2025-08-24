@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config'
+import path from 'path'
 
 export default defineConfig({
   test: {
@@ -12,6 +13,15 @@ export default defineConfig({
       reportsDirectory: './coverage',
       all: false,
       include: ['lib/**/*.{ts,tsx}'],
+    },
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './'),
+      '@/app': path.resolve(__dirname, './app'),
+      '@/components': path.resolve(__dirname, './components'),
+      '@/lib': path.resolve(__dirname, './lib'),
+      '@/hooks': path.resolve(__dirname, './hooks'),
     },
   },
 })

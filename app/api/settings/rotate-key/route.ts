@@ -202,12 +202,12 @@ export async function GET(req: NextRequest) {
       .eq('user_id', user.id)
       .single()
 
-    const rotationConfig = securitySettings?.config || {}
-    const requireRotation = rotationConfig.requireApiKeyRotation ?? false
-    const rotationDays = rotationConfig.rotationDays ?? 90
+    const rotationConfig = (securitySettings?.config as any) || {}
+    const requireRotation = rotationConfig?.requireApiKeyRotation ?? false
+    const rotationDays = rotationConfig?.rotationDays ?? 90
 
     // Calculate if rotation is needed
-    const lastRotated = new Date(keyData.last_rotated || keyData.created_at)
+    const lastRotated = new Date(keyData.last_rotated || keyData.created_at || Date.now())
     const daysSinceRotation = Math.floor(
       (Date.now() - lastRotated.getTime()) / (1000 * 60 * 60 * 24)
     )

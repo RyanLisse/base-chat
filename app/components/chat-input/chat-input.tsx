@@ -15,6 +15,7 @@ import { ReasoningEffortCompact, type ReasoningEffort } from "../chat/reasoning-
 import { PromptSystem } from "../suggestions/prompt-system"
 import { ButtonFileUpload } from "./button-file-upload"
 import { ButtonSearch } from "./button-search"
+import { ButtonAudio } from "./button-audio"
 import { FileList } from "./file-list"
 
 type ChatInputProps = {
@@ -218,6 +219,9 @@ export function ChatInput({
                   isAuthenticated={isUserAuthenticated}
                 />
               ) : null}
+              <ButtonAudio
+                isAuthenticated={isUserAuthenticated}
+              />
               {isGPT5Model && (
                 <ReasoningEffortCompact
                   value={currentReasoningEffort}

@@ -29,6 +29,11 @@ const DialogAuth = dynamic(
   { ssr: false }
 )
 
+const TranscriptionPanel = dynamic(
+  () => import("@/components/realtime/transcription-panel").then((mod) => mod.TranscriptionPanel),
+  { ssr: false }
+)
+
 export function Chat() {
   const { chatId } = useChatSession()
   const {
@@ -86,6 +91,15 @@ export function Chat() {
       setQuotedText({ text, messageId })
     },
     []
+  )
+
+  // Handle transcription text selection
+  const handleTranscriptionSelect = useCallback(
+    (text: string) => {
+      // Set the transcribed text as the input value
+      handleInputChange(text)
+    },
+    [handleInputChange]
   )
 
   // Chat operations (utils + handlers) - created first
@@ -270,6 +284,10 @@ export function Chat() {
       </motion.div>
 
       <FeedbackWidget authUserId={user?.id} />
+      
+      <TranscriptionPanel 
+        onTranscriptionSelect={handleTranscriptionSelect}
+      />
     </div>
   )
 }

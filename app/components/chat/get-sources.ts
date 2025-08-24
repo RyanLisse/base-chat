@@ -1,4 +1,4 @@
-import type { Message as MessageAISDK } from "@ai-sdk/react"
+import { UIMessage as MessageAISDK } from "@ai-sdk/react"
 
 export function getSources(parts: MessageAISDK["parts"]) {
   const sources = parts

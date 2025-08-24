@@ -1,4 +1,4 @@
-import { encryptKey } from "@/lib/encryption"
+import { encryptKey, maskKey } from "@/lib/encryption"
 import { getModelsForProvider } from "@/lib/models"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
@@ -28,6 +28,9 @@ export async function POST(request: Request) {
     }
 
     const { encrypted, iv } = encryptKey(apiKey)
+    // Extract auth tag from encrypted data
+    const [encryptedKey, authTag] = encrypted.split(':')
+    const maskedKey = maskKey(apiKey)
 
     // Check if this is a new API key (not an update)
     const { data: existingKey } = await supabase
@@ -43,8 +46,10 @@ export async function POST(request: Request) {
     const { error } = await supabase.from("user_keys").upsert({
       user_id: authData.user.id,
       provider,
-      encrypted_key: encrypted,
+      encrypted_key: encryptedKey,
       iv,
+      auth_tag: authTag,
+      masked_key: maskedKey,
       updated_at: new Date().toISOString(),
     })
 
