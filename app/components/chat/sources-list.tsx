@@ -9,7 +9,7 @@ import { useState } from "react"
 import { addUTM, formatUrl, getFavicon } from "./utils"
 
 type SourcesListProps = {
-  sources: SourceUIPart["source"][]
+  sources: Array<Pick<SourceUIPart["source"], 'id' | 'title' | 'url'>>
   className?: string
 }
 
@@ -39,9 +39,8 @@ export function SourcesList({ sources, className }: SourcesListProps) {
             Sources
             <div className="flex -space-x-1">
               {sources?.map((source, index) => {
-                const faviconUrl = getFavicon(source.url)
-                const showFallback =
-                  !faviconUrl || failedFavicons.has(source.url)
+                const faviconUrl = source.url ? getFavicon(source.url) : null
+                const showFallback = !faviconUrl || (source.url ? failedFavicons.has(source.url) : true)
 
                 return showFallback ? (
                   <div
@@ -56,7 +55,7 @@ export function SourcesList({ sources, className }: SourcesListProps) {
                     width={16}
                     height={16}
                     className="border-background h-4 w-4 rounded-sm border"
-                    onError={() => handleFaviconError(source.url)}
+                    onError={() => source.url && handleFaviconError(source.url)}
                   />
                 )
               })}
@@ -86,37 +85,45 @@ export function SourcesList({ sources, className }: SourcesListProps) {
             >
               <ul className="space-y-2 px-3 pt-3 pb-3">
                 {sources.map((source) => {
-                  const faviconUrl = getFavicon(source.url)
-                  const showFallback =
-                    !faviconUrl || failedFavicons.has(source.url)
+                  const faviconUrl = source.url ? getFavicon(source.url) : null
+                  const showFallback = !faviconUrl || (source.url ? failedFavicons.has(source.url) : true)
 
                   return (
                     <li key={source.id} className="flex items-center text-sm">
                       <div className="min-w-0 flex-1 overflow-hidden">
-                        <a
-                          href={addUTM(source.url)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary group line-clamp-1 flex items-center gap-1 hover:underline"
-                        >
-                          {showFallback ? (
+                        {source.url ? (
+                          <>
+                            <a
+                              href={addUTM(source.url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary group line-clamp-1 flex items-center gap-1 hover:underline"
+                            >
+                              {showFallback ? (
+                                <div className="bg-muted h-4 w-4 flex-shrink-0 rounded-full" />
+                              ) : (
+                                <Image
+                                  src={faviconUrl!}
+                                  alt={`Favicon for ${source.title}`}
+                                  width={16}
+                                  height={16}
+                                  className="h-4 w-4 flex-shrink-0 rounded-sm"
+                                  onError={() => handleFaviconError(source.url!)}
+                                />
+                              )}
+                              <span className="truncate">{source.title || source.id}</span>
+                              <Link className="inline h-3 w-3 flex-shrink-0 opacity-70 transition-opacity group-hover:opacity-100" />
+                            </a>
+                            <div className="text-muted-foreground line-clamp-1 text-xs">
+                              {formatUrl(source.url)}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-foreground line-clamp-1 flex items-center gap-2">
                             <div className="bg-muted h-4 w-4 flex-shrink-0 rounded-full" />
-                          ) : (
-                            <Image
-                              src={faviconUrl}
-                              alt={`Favicon for ${source.title}`}
-                              width={16}
-                              height={16}
-                              className="h-4 w-4 flex-shrink-0 rounded-sm"
-                              onError={() => handleFaviconError(source.url)}
-                            />
-                          )}
-                          <span className="truncate">{source.title}</span>
-                          <Link className="inline h-3 w-3 flex-shrink-0 opacity-70 transition-opacity group-hover:opacity-100" />
-                        </a>
-                        <div className="text-muted-foreground line-clamp-1 text-xs">
-                          {formatUrl(source.url)}
-                        </div>
+                            <span className="truncate">{source.title || source.id}</span>
+                          </div>
+                        )}
                       </div>
                     </li>
                   )
