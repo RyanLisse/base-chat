@@ -288,7 +288,7 @@ export const useTranscriptionStore = create<TranscriptionStore>()(
           partialize: (state) => ({
             settings: state.settings,
             audioConfig: state.audioConfig,
-            transcriptItems: state.transcriptItems,
+            transcriptItems: state.transcriptItems.slice(-1000), // Keep only last 1000 items to prevent storage bloat
           }),
         }
       )

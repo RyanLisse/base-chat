@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
 import OpenAI from 'openai'
+import { decryptKey } from '@/lib/encryption'
 
 // Mock dependencies
 vi.mock('@/lib/supabase/server')
@@ -16,6 +17,7 @@ vi.mock('@/lib/logger', () => ({
   },
 }))
 vi.mock('openai')
+vi.mock('@/lib/encryption')
 
 describe('Realtime API Routes', () => {
   const mockSupabaseClient = {
@@ -78,7 +80,7 @@ describe('Realtime API Routes', () => {
       expect(response.status).toBe(400)
       expect(data.error).toBe('OpenAI API key not found. Please add your API key in settings.')
       expect(logger.warn).toHaveBeenCalledWith('No OpenAI API key found for user')
-      expect(mockFromQuery.select).toHaveBeenCalledWith('api_key')
+      expect(mockFromQuery.select).toHaveBeenCalledWith('encrypted_key, iv, auth_tag')
       expect(mockFromQuery.eq).toHaveBeenCalledWith('user_id', 'user-123')
       expect(mockFromQuery.eq).toHaveBeenCalledWith('provider', 'openai')
     })
@@ -95,12 +97,37 @@ describe('Realtime API Routes', () => {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
         single: vi.fn().mockResolvedValueOnce({
-          data: { api_key: 'sk-test-key' },
+          data: { 
+            encrypted_key: 'encrypted-key-data',
+            iv: 'initialization-vector',
+            auth_tag: 'authentication-tag'
+          },
           error: null,
         }),
       }
 
       mockSupabaseClient.from.mockReturnValue(mockFromQuery)
+
+      // Mock the decryptKey function
+      vi.mocked(decryptKey).mockReturnValue('sk-test-key')
+
+      // Mock OpenAI client
+      const mockOpenAI = {
+        beta: {
+          realtime: {
+            sessions: {
+              create: vi.fn().mockResolvedValue({
+                id: 'session_test',
+                client_secret: {
+                  value: 'ek_live_test',
+                  expires_at: Math.floor(Date.now() / 1000) + 3600
+                }
+              })
+            }
+          }
+        }
+      }
+      vi.mocked(OpenAI).mockImplementation(() => mockOpenAI as any)
 
       const request = new NextRequest('http://localhost/api/realtime/ephemeral-key', {
         method: 'POST',
@@ -111,10 +138,11 @@ describe('Realtime API Routes', () => {
 
       expect(response.status).toBe(200)
       expect(data.client_secret).toBeDefined()
-      expect(data.client_secret.value).toMatch(/^ek_live_/)
+      expect(data.client_secret.value).toBe('ek_live_test')
       expect(data.client_secret.expires_at).toBeDefined()
-      expect(data.session_id).toMatch(/^session_user-123_/)
-      expect(logger.info).toHaveBeenCalledWith('Mock ephemeral key created successfully')
+      expect(data.session_id).toBe('session_test')
+      expect(logger.info).toHaveBeenCalledWith('Ephemeral key created successfully')
+      expect(decryptKey).toHaveBeenCalledWith('encrypted-key-data:authentication-tag', 'initialization-vector')
     })
 
     it('should handle errors gracefully', async () => {

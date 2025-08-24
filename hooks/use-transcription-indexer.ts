@@ -25,34 +25,10 @@ export function useTranscriptionIndexer({
     currentSession
   } = useTranscriptionStore()
 
-  // Get user's OpenAI API key
-  const { data: apiKey } = useQuery({
-    queryKey: ['openai-api-key', userId],
-    queryFn: async () => {
-      if (!userId) return null
-      
-      const { data, error } = await supabase
-        .from('user_api_keys')
-        .select('api_key')
-        .eq('user_id', userId)
-        .eq('provider', 'openai')
-        .single()
-
-      if (error || !data?.api_key) {
-        throw new Error('OpenAI API key not found')
-      }
-
-      return data.api_key
-    },
-    enabled: !!userId,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  })
-
-  // Create indexer instance
+  // Create indexer instance (no longer needs API key)
   const indexer = useMemo(() => {
-    if (!apiKey) return null
-    return new TranscriptionIndexer(apiKey)
-  }, [apiKey])
+    return new TranscriptionIndexer()
+  }, [])
 
   // Index a single transcription
   const indexTranscriptionMutation = useMutation({
@@ -63,8 +39,8 @@ export function useTranscriptionIndexer({
       transcriptItem: TranscriptItem
       sessionId?: string
     }) => {
-      if (!indexer || !userId) {
-        throw new Error('Indexer not available')
+      if (!userId) {
+        throw new Error('User ID required')
       }
       
       await indexer.indexTranscription(userId, transcriptItem, sessionId)
@@ -94,8 +70,8 @@ export function useTranscriptionIndexer({
       transcriptItems: TranscriptItem[]
       sessionId?: string
     }) => {
-      if (!indexer || !userId) {
-        throw new Error('Indexer not available')
+      if (!userId) {
+        throw new Error('User ID required')
       }
       
       await indexer.indexTranscriptions(userId, transcriptItems, sessionId)
@@ -130,36 +106,36 @@ export function useTranscriptionIndexer({
       return useQuery({
         queryKey: ['transcription-search', userId, query, options],
         queryFn: async () => {
-          if (!indexer || !userId || !query.trim()) {
+          if (!userId || !query.trim()) {
             return []
           }
           
           return await indexer.searchTranscriptions(userId, query, options)
         },
-        enabled: !!indexer && !!userId && !!query.trim(),
+        enabled: !!userId && !!query.trim(),
         staleTime: 1000 * 60, // 1 minute
       })
     },
-    [indexer, userId]
+[userId]
   )
 
   // Get session transcriptions
   const { data: sessionTranscriptions } = useQuery({
     queryKey: ['session-transcriptions', userId, currentSession?.id],
     queryFn: async () => {
-      if (!indexer || !userId || !currentSession?.id) {
+      if (!userId || !currentSession?.id) {
         return []
       }
       
       return await indexer.getSessionTranscriptions(userId, currentSession.id)
     },
-    enabled: !!indexer && !!userId && !!currentSession?.id,
+    enabled: !!userId && !!currentSession?.id,
     staleTime: 1000 * 30, // 30 seconds
   })
 
   // Auto-index new transcriptions
   useEffect(() => {
-    if (!autoIndex || !userId || !indexer || transcriptItems.length === 0) {
+    if (!autoIndex || !userId || transcriptItems.length === 0) {
       return
     }
 
@@ -181,7 +157,6 @@ export function useTranscriptionIndexer({
   }, [
     transcriptItems, 
     userId, 
-    indexer, 
     autoIndex, 
     currentSession?.id,
     indexTranscriptionMutation
@@ -190,8 +165,8 @@ export function useTranscriptionIndexer({
   // Delete transcription from index
   const deleteTranscriptionMutation = useMutation({
     mutationFn: async (transcriptId: string) => {
-      if (!indexer || !userId) {
-        throw new Error('Indexer not available')
+      if (!userId) {
+        throw new Error('User ID required')
       }
       
       await indexer.deleteTranscription(userId, transcriptId)
@@ -214,8 +189,8 @@ export function useTranscriptionIndexer({
   // Clear all transcriptions
   const clearTranscriptionsMutation = useMutation({
     mutationFn: async () => {
-      if (!indexer || !userId) {
-        throw new Error('Indexer not available')
+      if (!userId) {
+        throw new Error('User ID required')
       }
       
       await indexer.clearUserTranscriptions(userId)
@@ -240,10 +215,50 @@ export function useTranscriptionIndexer({
     }
   })
 
+  // Clean up old transcriptions
+  const cleanupTranscriptionsMutation = useMutation({
+    mutationFn: async (options: { olderThanDays?: number; maxItems?: number } = {}) => {
+      return await indexer.cleanupOldTranscriptions(options)
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ 
+        queryKey: ['transcription-search', userId] 
+      })
+      queryClient.invalidateQueries({ 
+        queryKey: ['cleanup-status', userId] 
+      })
+      toast({
+        title: 'Cleanup complete',
+        description: `Deleted ${result.deleted} old transcriptions`,
+        status: 'success'
+      })
+    },
+    onError: (error) => {
+      console.error('Failed to cleanup transcriptions:', error)
+      toast({
+        title: 'Cleanup failed',
+        description: 'Failed to clean up old transcriptions',
+        status: 'error'
+      })
+    }
+  })
+
+  // Get cleanup status
+  const { data: cleanupStatus } = useQuery({
+    queryKey: ['cleanup-status', userId],
+    queryFn: async () => {
+      if (!userId) return null
+      return await indexer.getCleanupStatus()
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  })
+
   return {
     // State
-    isIndexerReady: !!indexer,
+    isIndexerReady: true, // Always ready now since no API key dependency
     sessionTranscriptions: sessionTranscriptions || [],
+    cleanupStatus: cleanupStatus || null,
     
     // Actions
     indexTranscription: (transcriptItem: TranscriptItem, sessionId?: string) =>
@@ -259,15 +274,20 @@ export function useTranscriptionIndexer({
     
     clearTranscriptions: () =>
       clearTranscriptionsMutation.mutate(),
+
+    cleanupOldTranscriptions: (options?: { olderThanDays?: number; maxItems?: number }) =>
+      cleanupTranscriptionsMutation.mutate(options),
     
     // Status
     isIndexing: indexTranscriptionMutation.isPending || bulkIndexMutation.isPending,
     isDeleting: deleteTranscriptionMutation.isPending,
     isClearing: clearTranscriptionsMutation.isPending,
+    isCleaning: cleanupTranscriptionsMutation.isPending,
     
     // Errors
     indexError: indexTranscriptionMutation.error,
     deleteError: deleteTranscriptionMutation.error,
-    clearError: clearTranscriptionsMutation.error
+    clearError: clearTranscriptionsMutation.error,
+    cleanupError: cleanupTranscriptionsMutation.error
   }
 }

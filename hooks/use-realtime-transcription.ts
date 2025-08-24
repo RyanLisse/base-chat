@@ -15,7 +15,7 @@ interface RealtimeConnection {
   ws: WebSocket | null
   audioContext: AudioContext | null
   mediaStream: MediaStream | null
-  processor: ScriptProcessorNode | null
+  audioWorkletNode: AudioWorkletNode | null
 }
 
 export function useRealtimeTranscription(options: UseRealtimeTranscriptionOptions = {}) {
@@ -34,12 +34,15 @@ export function useRealtimeTranscription(options: UseRealtimeTranscriptionOption
     ws: null,
     audioContext: null,
     mediaStream: null,
-    processor: null
+    audioWorkletNode: null
   })
 
   const connectionRef = useRef<RealtimeConnection>(connection)
   const [isConnecting, setIsConnecting] = useState(false)
   const ephemeralKeyRef = useRef<string | null>(null)
+  const reconnectAttempts = useRef(0)
+  const maxReconnectAttempts = 3
+  const reconnectTimeout = useRef<NodeJS.Timeout | null>(null)
 
   // Update ref when connection changes
   useEffect(() => {
@@ -49,14 +52,20 @@ export function useRealtimeTranscription(options: UseRealtimeTranscriptionOption
   const cleanup = useCallback(() => {
     const conn = connectionRef.current
 
+    // Clear any pending reconnection
+    if (reconnectTimeout.current) {
+      clearTimeout(reconnectTimeout.current)
+      reconnectTimeout.current = null
+    }
+
     // Close WebSocket
     if (conn.ws && conn.ws.readyState === WebSocket.OPEN) {
       conn.ws.close()
     }
 
     // Stop audio processing
-    if (conn.processor) {
-      conn.processor.disconnect()
+    if (conn.audioWorkletNode) {
+      conn.audioWorkletNode.disconnect()
     }
 
     // Close audio context
@@ -73,8 +82,10 @@ export function useRealtimeTranscription(options: UseRealtimeTranscriptionOption
       ws: null,
       audioContext: null,
       mediaStream: null,
-      processor: null
+      audioWorkletNode: null
     })
+    
+    reconnectAttempts.current = 0
   }, [])
 
   const handleError = useCallback((error: Error) => {
@@ -133,20 +144,28 @@ export function useRealtimeTranscription(options: UseRealtimeTranscriptionOption
 
   const setupWebSocket = useCallback((ephemeralKey: string): Promise<WebSocket> => {
     return new Promise((resolve, reject) => {
-      // Use OpenAI's WebSocket endpoint for Realtime API
-      const ws = new WebSocket(
-        'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01',
-        [],
-        {
-          headers: {
-            'Authorization': `Bearer ${ephemeralKey}`,
-            'OpenAI-Beta': 'realtime=v1'
-          }
-        } as any
-      )
+      // Use OpenAI's WebSocket endpoint for Realtime API with proper authentication
+      const url = new URL('wss://api.openai.com/v1/realtime')
+      url.searchParams.set('model', 'gpt-4o-realtime-preview-2024-10-01')
+      
+      // Create WebSocket without headers (not supported in browser)
+      const ws = new WebSocket(url.toString())
+      
+      // Send authentication after connection opens
+      let authSent = false
 
       ws.onopen = () => {
         console.log('WebSocket connected')
+        
+        // Send authentication message first
+        if (!authSent) {
+          const authMessage = {
+            type: 'session.auth',
+            token: ephemeralKey
+          }
+          ws.send(JSON.stringify(authMessage))
+          authSent = true
+        }
         
         // Send session configuration
         const sessionConfig = {
@@ -196,27 +215,54 @@ export function useRealtimeTranscription(options: UseRealtimeTranscriptionOption
         console.log('WebSocket closed:', event.code, event.reason)
         setSessionStatus('disconnected')
         options.onConnectionChange?.(false)
+        
+        // Attempt to reconnect if the connection was lost unexpectedly
+        if (event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {
+          reconnectAttempts.current++
+          const delay = Math.pow(2, reconnectAttempts.current - 1) * 1000 // Exponential backoff
+          
+          console.log(`Attempting reconnection ${reconnectAttempts.current}/${maxReconnectAttempts} in ${delay}ms`)
+          
+          reconnectTimeout.current = setTimeout(() => {
+            if (ephemeralKeyRef.current) {
+              setupWebSocket(ephemeralKeyRef.current)
+                .then(newWs => {
+                  setConnection(prev => ({ ...prev, ws: newWs }))
+                  reconnectAttempts.current = 0 // Reset on successful reconnection
+                })
+                .catch(err => {
+                  console.error('Reconnection failed:', err)
+                  if (reconnectAttempts.current >= maxReconnectAttempts) {
+                    handleError(new Error('Max reconnection attempts reached'))
+                  }
+                })
+            }
+          }, delay)
+        }
       }
     })
   }, [setSessionStatus, setLoading, options, handleError])
 
-  const setupAudioProcessing = useCallback((mediaStream: MediaStream, ws: WebSocket): { audioContext: AudioContext, processor: ScriptProcessorNode } => {
+  const setupAudioProcessing = useCallback(async (mediaStream: MediaStream, ws: WebSocket): Promise<{ audioContext: AudioContext, audioWorkletNode: AudioWorkletNode }> => {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: audioConfig.sampleRate
     })
 
-    const source = audioContext.createMediaStreamSource(mediaStream)
-    const processor = audioContext.createScriptProcessor(4096, 1, 1)
+    // Load the audio worklet module
+    try {
+      await audioContext.audioWorklet.addModule('/audio-processor-worklet.js')
+    } catch (error) {
+      console.error('Failed to load audio worklet:', error)
+      throw new Error('Failed to initialize audio processing')
+    }
 
-    processor.onaudioprocess = (event) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        const inputData = event.inputBuffer.getChannelData(0)
-        
-        // Convert float32 to int16
-        const int16Array = new Int16Array(inputData.length)
-        for (let i = 0; i < inputData.length; i++) {
-          int16Array[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768))
-        }
+    const source = audioContext.createMediaStreamSource(mediaStream)
+    const audioWorkletNode = new AudioWorkletNode(audioContext, 'audio-processor')
+
+    // Handle messages from the audio worklet
+    audioWorkletNode.port.onmessage = (event) => {
+      if (event.data.type === 'audioData' && ws.readyState === WebSocket.OPEN) {
+        const int16Array = event.data.data
 
         // Send audio data to OpenAI
         const audioMessage = {
@@ -228,10 +274,10 @@ export function useRealtimeTranscription(options: UseRealtimeTranscriptionOption
       }
     }
 
-    source.connect(processor)
-    processor.connect(audioContext.destination)
+    source.connect(audioWorkletNode)
+    audioWorkletNode.connect(audioContext.destination)
 
-    return { audioContext, processor }
+    return { audioContext, audioWorkletNode }
   }, [audioConfig])
 
   const handleRealtimeMessage = useCallback((message: any) => {
@@ -323,14 +369,14 @@ export function useRealtimeTranscription(options: UseRealtimeTranscriptionOption
       const ws = await setupWebSocket(ephemeralKey)
 
       // Setup audio processing
-      const { audioContext, processor } = setupAudioProcessing(mediaStream, ws)
+      const { audioContext, audioWorkletNode } = await setupAudioProcessing(mediaStream, ws)
 
       // Update connection state
       setConnection({
         ws,
         audioContext,
         mediaStream,
-        processor
+        audioWorkletNode
       })
 
       toast({

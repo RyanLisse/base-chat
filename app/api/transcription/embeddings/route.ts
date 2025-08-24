@@ -16,13 +16,23 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+    
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      logger.warn('Unauthorized realtime key request')
+      logger.warn('Unauthorized embeddings request')
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
+      )
+    }
+
+    const { texts } = await request.json()
+
+    if (!texts || !Array.isArray(texts)) {
+      return NextResponse.json(
+        { error: 'texts array is required' },
+        { status: 400 }
       )
     }
 
@@ -60,60 +70,38 @@ export async function POST(request: NextRequest) {
       apiKey: decryptedApiKey,
     })
 
-    // Create an ephemeral key using OpenAI's realtime API
+    // Generate embeddings
     try {
-      const ephemeralKey = await openai.beta.realtime.sessions.create({
-        model: 'gpt-4o-realtime-preview-2024-10-01',
-        modalities: ['text', 'audio'],
-        instructions: 'You are a helpful assistant that provides transcription services.',
-        voice: 'alloy',
-        input_audio_format: 'pcm16',
-        output_audio_format: 'pcm16',
-        input_audio_transcription: {
-          model: 'whisper-1'
-        },
-        turn_detection: {
-          type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 200
-        }
+      const response = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: texts,
+        encoding_format: 'float'
       })
-
-      logger.info('Ephemeral key created successfully')
 
       return NextResponse.json({
-        client_secret: {
-          value: ephemeralKey.client_secret.value,
-          expires_at: ephemeralKey.client_secret.expires_at,
-        },
-        session_id: ephemeralKey.id,
+        embeddings: response.data.map(item => item.embedding)
       })
-    } catch (realtimeError) {
-      logger.error('Failed to create ephemeral key:', realtimeError)
+    } catch (embeddingError) {
+      logger.error('Failed to generate embeddings:', embeddingError)
       
-      // Fallback: Return error for now since OpenAI Realtime API might not be available
+      if (embeddingError instanceof OpenAI.APIError) {
+        return NextResponse.json(
+          { 
+            error: 'OpenAI API error',
+            details: embeddingError.message 
+          },
+          { status: embeddingError.status || 500 }
+        )
+      }
+
       return NextResponse.json(
-        { 
-          error: 'Realtime API not available. Please check your OpenAI API key has access to GPT-4o Realtime features.',
-          details: realtimeError instanceof Error ? realtimeError.message : 'Unknown error'
-        },
-        { status: 503 }
+        { error: 'Failed to generate embeddings' },
+        { status: 500 }
       )
     }
 
   } catch (error) {
-    logger.error('Error creating ephemeral key')
-
-    if (error instanceof OpenAI.APIError) {
-      return NextResponse.json(
-        { 
-          error: 'OpenAI API error',
-          details: error.message 
-        },
-        { status: error.status || 500 }
-      )
-    }
+    logger.error('Error in embeddings endpoint:', error)
 
     return NextResponse.json(
       { error: 'Internal server error' },
