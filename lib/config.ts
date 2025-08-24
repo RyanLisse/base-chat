@@ -117,6 +117,15 @@ If asked to perform specialized tasks (writing, brainstorming, explaining, codin
 
 export const SYSTEM_PROMPT_DEFAULT = BASE_SYSTEM_PROMPT
 
-export const FILE_SEARCH_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT
+// When file search is enabled, guide the model to (a) ground
+// answers in retrieved documents and (b) include light-weight citations.
+// The UI renders a Sources panel and also tolerates inline [1], [2] markers.
+export const FILE_SEARCH_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT}
+
+When you use file search or retrieved context:
+- Only answer using grounded information from the retrieved files.
+- Insert inline citations like [1], [2] immediately after the relevant sentence.
+- Each [n] should correspond to an item in the Sources panel, ordered by relevance.
+- If you are unsure or the information is not present, say so rather than guessing.`
 
 export const MESSAGE_MAX_LENGTH = 10000
